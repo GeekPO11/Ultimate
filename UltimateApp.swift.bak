@@ -58,8 +58,9 @@ struct UltimateApp: App {
                     .environmentObject(userSettings)
                     .onAppear {
                         if !hasRequestedNotificationPermission {
-                            NotificationManager.shared.requestAuthorization()
-                            hasRequestedNotificationPermission = true
+                            NotificationManager.shared.requestAuthorization { _ in
+                                hasRequestedNotificationPermission = true
+                            }
                         }
                     }
                     .onChange(of: dataMigrationService.isMigrationComplete) { _, _ in

@@ -1,0 +1,589 @@
+import Foundation
+import UserNotifications
+import SwiftData
+import UIKit
+
+/// Manager for handling app notifications
+class NotificationManager: ObservableObject {
+    static let shared = NotificationManager()
+    
+    @Published var isAuthorized = false
+    @Published var currentBadgeCount: Int = 0
+    
+    private init() {
+        print("NotificationManager: Initializing...")
+        checkAuthorizationStatus()
+        updateCurrentBadgeCount()
+    }
+    
+    /// Updates the current badge count from the notification center
+    private func updateCurrentBadgeCount() {
+        // Get the current badge count using notification settings
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            // We can't directly get the badge count from UNUserNotificationCenter
+            // We'll keep track of it internally in our app
+            // No action needed here as we'll update currentBadgeCount when we set it
+        }
+    }
+    
+    /// Resets the notification badge count
+    func resetBadgeCount() {
+        print("NotificationManager: Resetting badge count")
+        // Use the recommended UNUserNotificationCenter method instead of deprecated UIApplication property
+        UNUserNotificationCenter.current().setBadgeCount(0) { error in
+            if let error = error {
+                print("NotificationManager: Error resetting badge count: \(error)")
+            } else {
+                DispatchQueue.main.async {
+                    self.currentBadgeCount = 0
+                    print("NotificationManager: Badge count reset successfully")
+                }
+            }
+        }
+    }
+    
+    /// Schedules notifications for a challenge
+    func scheduleNotificationsForChallenge(_ challenge: Challenge) {
+        guard isAuthorized else {
+            print("NotificationManager: Not authorized to schedule notifications")
+            return
+        }
+        
+        print("NotificationManager: Scheduling notifications for challenge - \(challenge.name)")
+        
+        // Remove any existing notifications for this challenge
+        removeNotificationsForChallenge(challenge)
+        
+        // Get current badge count
+        let currentCount = self.currentBadgeCount
+        
+        // Schedule new notifications for each task
+        for task in challenge.tasks {
+            self.scheduleNotificationsForTask(task, in: challenge, startingBadgeCount: currentCount)
+        }
+    }
+    
+    /// Schedules notifications for a specific task
+    private func scheduleNotificationsForTask(_ task: Task, in challenge: Challenge, startingBadgeCount: Int = 0) {
+        guard let startDate = challenge.startDate else { return }
+        
+        // Calculate end date
+        let endDate = Calendar.current.date(byAdding: .day, value: challenge.durationInDays, to: startDate) ?? Date()
+        
+        // Get notification time
+        let notificationTime = task.scheduledTime ?? Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: Date()) ?? Date()
+        
+        // Create date components for the notification time
+        let timeComponents = Calendar.current.dateComponents([.hour, .minute], from: notificationTime)
+        
+        // Schedule notifications for each day of the challenge
+        var currentDate = startDate
+        var badgeCount = startingBadgeCount
+        while currentDate <= endDate {
+            // Create date components for the current day
+            var dateComponents = Calendar.current.dateComponents([.year, .month, .day], from: currentDate)
+            
+            // Add time components
+            dateComponents.hour = timeComponents.hour
+            dateComponents.minute = timeComponents.minute
+            
+            // Create trigger
+            let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: false)
+            
+            // Create content
+            let content = UNMutableNotificationContent()
+            content.title = getNotificationTitle(for: task)
+            content.body = getNotificationBody(for: task)
+            content.sound = .default
+            content.badge = NSNumber(value: badgeCount + 1)
+            
+            // Add challenge and task identifiers
+            content.userInfo = [
+                "challengeId": challenge.id.uuidString,
+                "taskId": task.id.uuidString
+            ]
+            
+            // Create request
+            let identifier = "challenge_\(challenge.id.uuidString)_task_\(task.id.uuidString)_\(dateComponents.year ?? 0)_\(dateComponents.month ?? 0)_\(dateComponents.day ?? 0)"
+            let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+            
+            // Add request
+            UNUserNotificationCenter.current().add(request) { error in
+                if let error = error {
+                    print("Error scheduling notification: \(error)")
+                }
+            }
+            
+            // Increment badge count
+            badgeCount += 1
+            
+            // Move to next day
+            currentDate = Calendar.current.date(byAdding: .day, value: 1, to: currentDate) ?? Date()
+        }
+    }
+    
+    /// Removes notifications for a challenge
+    func removeNotificationsForChallenge(_ challenge: Challenge) {
+        let identifierPrefix = "challenge_\(challenge.id.uuidString)"
+        
+        UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
+            let identifiers = requests.filter { $0.identifier.hasPrefix(identifierPrefix) }.map { $0.identifier }
+            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: identifiers)
+        }
+    }
+    
+    /// Removes all pending notifications and resets badge count
+    func removeAllPendingNotifications() {
+        print("NotificationManager: Removing all pending notifications")
+        UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
+        resetBadgeCount()
+    }
+    
+    /// Gets a notification title for a task
+    private func getNotificationTitle(for task: Task) -> String {
+        guard let taskType = task.type else {
+            return "Task Reminder ✅"
+        }
+        
+        switch taskType {
+        case .workout:
+            return "Time to Move! 💪"
+        case .nutrition:
+            return "Meal Reminder 🍽️"
+        case .water:
+            return "Hydration Check 💧"
+        case .reading:
+            return "Reading Time 📚"
+        case .photo:
+            return "Progress Photo 📸"
+        case .journal:
+            return "Journal Time ✍️"
+        case .mindfulness:
+            return "Mindfulness Moment 🧘"
+        case .custom:
+            return "Task Reminder ✅"
+        case .fasting:
+            return "Fasting reminder"
+        case .weight:
+            return "Weight tracking reminder"
+        case .habit:
+            return "Habit reminder"
+        }
+    }
+    
+    /// Gets a notification body for a task
+    private func getNotificationBody(for task: Task) -> String {
+        guard let taskType = task.type else {
+            return "It's time to complete your task: \(task.name)"
+        }
+        
+        switch taskType {
+        case .workout:
+            let workoutMessages = [
+                "Rise and grind! Your workout is waiting for you.",
+                "Energy levels dropping? A quick workout will boost them!",
+                "Your future self will thank you for working out today.",
+                "Every workout brings you closer to your goals.",
+                "Time to crush your fitness goals!"
+            ]
+            return workoutMessages.randomElement() ?? "Time for your workout!"
+            
+        case .nutrition:
+            let nutritionMessages = [
+                "Fuel your body with the right foods today!",
+                "Stick to your nutrition plan - you've got this!",
+                "Remember: food is fuel, not therapy.",
+                "Make healthy choices today for a stronger tomorrow.",
+                "Your body deserves quality nutrition!"
+            ]
+            return nutritionMessages.randomElement() ?? "Time to eat right!"
+            
+        case .water:
+            let waterMessages = [
+                "Hydration check! Have you had enough water today?",
+                "Water is your body's best friend. Drink up!",
+                "Stay hydrated, stay energized!",
+                "Your water bottle misses you. Time for a refill!",
+                "Proper hydration = better performance."
+            ]
+            return waterMessages.randomElement() ?? "Time to hydrate!"
+            
+        case .reading:
+            let readingMessages = [
+                "Feed your mind with some reading time.",
+                "Knowledge awaits! Time for your daily reading.",
+                "A chapter a day keeps stagnation away.",
+                "Your brain is hungry for some wisdom!",
+                "Reading is to the mind what exercise is to the body."
+            ]
+            return readingMessages.randomElement() ?? "Time to read!"
+            
+        case .photo:
+            let photoMessages = [
+                "Time to capture your progress! Every photo tells a story.",
+                "Document your journey with today's progress photo.",
+                "Picture time! Your future self will thank you.",
+                "Visual proof of your hard work - time for a progress photo!",
+                "Smile! It's progress photo time."
+            ]
+            return photoMessages.randomElement() ?? "Time to take your progress photo!"
+            
+        case .journal:
+            let journalMessages = [
+                "Time to reflect on your journey today.",
+                "Your journal is waiting for today's thoughts and insights.",
+                "A moment of reflection can bring clarity to your day.",
+                "Document your progress and feelings in your journal.",
+                "Writing down your thoughts helps process your experiences."
+            ]
+            return journalMessages.randomElement() ?? "Time to journal!"
+            
+        case .mindfulness:
+            let mindfulnessMessages = [
+                "Take a moment to center yourself with mindfulness.",
+                "A few minutes of meditation can reset your mind.",
+                "Pause, breathe, and be present in this moment.",
+                "Your mind deserves some quiet time today.",
+                "Mindfulness practice makes every day better."
+            ]
+            return mindfulnessMessages.randomElement() ?? "Time for mindfulness practice!"
+            
+        case .custom:
+            return "Don't forget to complete your task: \(task.name)"
+            
+        case .fasting:
+            return "Time to track your fasting for the \(task.challenge?.name ?? "") challenge."
+            
+        case .weight:
+            return "Don't forget to track your weight for the \(task.challenge?.name ?? "") challenge."
+            
+        case .habit:
+            return "Time to complete your daily habits for the \(task.challenge?.name ?? "") challenge."
+        }
+    }
+    
+    /// Schedules a test notification
+    func scheduleTestNotification() {
+        let content = UNMutableNotificationContent()
+        content.title = "Test Notification"
+        content.body = "This is a test notification from the Challenge Tracker app."
+        content.sound = .default
+        
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 5, repeats: false)
+        let request = UNNotificationRequest(identifier: "testNotification", content: content, trigger: trigger)
+        
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("Error scheduling test notification: \(error)")
+            }
+        }
+    }
+    
+    /// Schedules a notification for a specific task type
+    private func scheduleNotificationForTaskType(_ type: TaskType, at date: Date, for challenge: Challenge) {
+        let content = UNMutableNotificationContent()
+        
+        switch type {
+        case .workout:
+            content.title = "Time for your workout!"
+            content.body = "Don't forget your workout for the \(challenge.name) challenge."
+            content.sound = .default
+            
+        case .nutrition:
+            content.title = "Nutrition reminder"
+            content.body = "Remember to follow your nutrition plan for the \(challenge.name) challenge."
+            content.sound = .default
+            
+        case .water:
+            content.title = "Hydration reminder"
+            content.body = "Don't forget to drink water for your \(challenge.name) challenge."
+            content.sound = .default
+            
+        case .reading:
+            content.title = "Reading reminder"
+            content.body = "Time to read for your \(challenge.name) challenge."
+            content.sound = .default
+            
+        case .photo:
+            content.title = "Photo reminder"
+            content.body = "Don't forget to take your progress photo for the \(challenge.name) challenge."
+            content.sound = .default
+            
+        case .journal:
+            content.title = "Journaling reminder"
+            content.body = "Time to journal for your \(challenge.name) challenge."
+            content.sound = .default
+            
+        case .mindfulness:
+            content.title = "Mindfulness reminder"
+            content.body = "Take a moment for mindfulness in your \(challenge.name) challenge."
+            content.sound = .default
+            
+        case .custom:
+            content.title = "Task reminder"
+            content.body = "Don't forget your task for the \(challenge.name) challenge."
+            content.sound = .default
+            
+        case .fasting:
+            content.title = "Fasting reminder"
+            content.body = "Time to track your fasting for the \(challenge.name) challenge."
+            content.sound = .default
+            
+        case .weight:
+            content.title = "Weight tracking reminder"
+            content.body = "Don't forget to track your weight for the \(challenge.name) challenge."
+            content.sound = .default
+            
+        case .habit:
+            content.title = "Habit reminder"
+            content.body = "Time to complete your daily habits for the \(challenge.name) challenge."
+            content.sound = .default
+        }
+        
+        // Schedule the notification
+        scheduleNotification(with: content, at: date, identifier: "task-\(type.rawValue)-\(challenge.id.uuidString)-\(date.timeIntervalSince1970)")
+    }
+    
+    /// Handles different notification types
+    func handleNotificationType(_ type: NotificationType, for challenge: Challenge? = nil, at time: Date? = nil) {
+        guard isAuthorized else { return }
+        
+        let content = UNMutableNotificationContent()
+        var identifier = "notification-\(UUID().uuidString)"
+        
+        switch type {
+        case .dailyReminder:
+            content.title = "Daily Challenge Reminder"
+            content.body = "Don't forget to complete your challenge tasks for today!"
+            content.sound = .default
+            
+            if let challenge = challenge {
+                identifier = "daily-reminder-\(challenge.id.uuidString)"
+            }
+            
+        case .challengeStart:
+            guard let challenge = challenge else { return }
+            
+            content.title = "Challenge Started!"
+            content.body = "Your \(challenge.name) challenge has officially begun. Good luck!"
+            content.sound = .default
+            
+            identifier = "challenge-start-\(challenge.id.uuidString)"
+            
+        case .challengeComplete:
+            guard let challenge = challenge else { return }
+            
+            content.title = "Challenge Completed!"
+            content.body = "Congratulations! You've completed the \(challenge.name) challenge."
+            content.sound = .default
+            
+            identifier = "challenge-complete-\(challenge.id.uuidString)"
+            
+        case .streakMilestone(let days):
+            content.title = "Streak Milestone!"
+            content.body = "You've maintained a \(days)-day streak. Keep up the great work!"
+            content.sound = .default
+            
+            identifier = "streak-milestone-\(days)"
+            
+        case .taskDue:
+            guard let challenge = challenge else { return }
+            
+            content.title = "Task Due Soon"
+            content.body = "You have a task due soon for your \(challenge.name) challenge."
+            content.sound = .default
+            
+            identifier = "task-due-\(challenge.id.uuidString)-\(Date().timeIntervalSince1970)"
+        }
+        
+        // Schedule the notification
+        if let time = time {
+            scheduleNotification(with: content, at: time, identifier: identifier)
+        } else {
+            scheduleNotification(with: content, after: 1, identifier: identifier)
+        }
+    }
+    
+    /// Handles notification response
+    func handleNotificationResponse(_ response: UNNotificationResponse, completion: @escaping () -> Void) {
+        // Reset badge count when user interacts with a notification
+        resetBadgeCount()
+        
+        // Extract challenge and task IDs from the notification
+        if let challengeId = response.notification.request.content.userInfo["challengeId"] as? String,
+           let taskId = response.notification.request.content.userInfo["taskId"] as? String {
+            // Post notification to handle the task
+            NotificationCenter.default.post(
+                name: Notification.Name("HandleTaskNotification"),
+                object: nil,
+                userInfo: [
+                    "challengeId": challengeId,
+                    "taskId": taskId
+                ]
+            )
+        }
+        
+        completion()
+    }
+    
+    /// Schedules a notification with the given content at a specific date
+    private func scheduleNotification(with content: UNMutableNotificationContent, at date: Date, identifier: String) {
+        let calendar = Calendar.current
+        let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date)
+        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+        
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+        
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("Error scheduling notification: \(error)")
+            }
+        }
+    }
+    
+    /// Schedules a notification with the given content after a time interval
+    private func scheduleNotification(with content: UNMutableNotificationContent, after hours: Double, identifier: String) {
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: hours * 3600, repeats: false)
+        
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+        
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("Error scheduling notification: \(error)")
+            }
+        }
+    }
+    
+    /// Checks the current notification authorization status
+    func checkAuthorizationStatus() {
+        print("NotificationManager: Checking authorization status")
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            DispatchQueue.main.async {
+                self.isAuthorized = settings.authorizationStatus == .authorized
+                print("NotificationManager: Authorization status - \(self.isAuthorized)")
+            }
+        }
+    }
+    
+    /// Requests notification permissions
+    func requestAuthorization(completion: @escaping (Bool) -> Void) {
+        print("NotificationManager: Requesting authorization")
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            DispatchQueue.main.async {
+                self.isAuthorized = granted
+                print("NotificationManager: Authorization granted - \(granted)")
+                completion(granted)
+            }
+            
+            if let error = error {
+                print("NotificationManager: Error requesting authorization - \(error)")
+            }
+        }
+    }
+    
+    /// Schedules daily reminders at 9 AM
+    private func scheduleDailyReminders() {
+        // Create content for daily reminder
+        let content = UNMutableNotificationContent()
+        content.title = "Daily Challenge Reminder"
+        content.body = "Don't forget to complete your challenge tasks for today!"
+        content.sound = .default
+        
+        // Create date components for 9 AM
+        var dateComponents = DateComponents()
+        dateComponents.hour = 9
+        dateComponents.minute = 0
+        
+        // Create trigger that repeats daily at 9 AM
+        let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
+        
+        // Create request
+        let request = UNNotificationRequest(
+            identifier: "daily-reminder",
+            content: content,
+            trigger: trigger
+        )
+        
+        // Add request
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("NotificationManager: Error scheduling daily reminder: \(error)")
+            } else {
+                print("NotificationManager: Daily reminder scheduled successfully")
+            }
+        }
+        
+        // Setup notification categories and actions
+        setupNotificationCategories()
+    }
+    
+    /// Sets up notification categories and actions for the app
+    private func setupNotificationCategories() {
+        let center = UNUserNotificationCenter.current()
+        
+        // Define actions
+        let completeAction = UNNotificationAction(
+            identifier: "COMPLETE_ACTION",
+            title: "Mark as Complete",
+            options: .foreground
+        )
+        
+        let laterAction = UNNotificationAction(
+            identifier: "LATER_ACTION",
+            title: "Remind Me Later",
+            options: .foreground
+        )
+        
+        // Create the category
+        let taskCategory = UNNotificationCategory(
+            identifier: "TASK_CATEGORY",
+            actions: [completeAction, laterAction],
+            intentIdentifiers: [],
+            options: []
+        )
+        
+        // Register the category
+        center.setNotificationCategories([taskCategory])
+        
+        print("NotificationManager: Notification categories and actions set up")
+    }
+    
+    /// Enables all notification types and schedules daily reminders
+    func enableAllNotifications(userSettings: UserSettings? = nil) {
+        print("NotificationManager: Enabling all notifications")
+        
+        // Make sure we have authorization
+        guard isAuthorized else {
+            print("NotificationManager: Cannot enable notifications - not authorized")
+            return
+        }
+        
+        // Enable all notification types in UserSettings
+        DispatchQueue.main.async {
+            if let userSettings = userSettings {
+                userSettings.notifyWorkouts = true
+                userSettings.notifyNutrition = true
+                userSettings.notifyWater = true
+                userSettings.notifyReading = true
+                userSettings.notifyPhotos = true
+                
+                print("NotificationManager: All notification types enabled in UserSettings")
+            } else {
+                print("NotificationManager: No UserSettings provided, skipping preference updates")
+            }
+        }
+        
+        // Setup notification categories and actions
+        setupNotificationCategories()
+        
+        // Schedule daily reminders
+        scheduleDailyReminders()
+        
+        // Register for remote notifications
+        DispatchQueue.main.async {
+            UIApplication.shared.registerForRemoteNotifications()
+        }
+        
+        print("NotificationManager: All notifications enabled")
+    }
+}
