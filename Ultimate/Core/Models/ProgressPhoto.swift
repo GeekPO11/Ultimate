@@ -24,16 +24,8 @@ enum PhotoAngle: String, Codable, CaseIterable {
     }
     
     var icon: String {
-        switch self {
-        case .front:
-            return "figure.stand"
-        case .leftSide:
-            return "figure.stand.line.dotted.figure.stand"
-        case .rightSide:
-            return "figure.stand.line.dotted.figure.stand"
-        case .back:
-            return "figure.stand"
-        }
+        // Use a consistent icon for all angles
+        return "person.bust"
     }
 }
 

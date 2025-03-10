@@ -53,20 +53,6 @@ struct CameraView: View {
                         
                         Spacer()
                         
-                        Button(action: {
-                            isFlashOn.toggle()
-                            cameraController.setFlashMode(isFlashOn ? .on : .off)
-                        }) {
-                            Image(systemName: isFlashOn ? "bolt.fill" : "bolt.slash.fill")
-                                .font(.system(size: 20))
-                                .foregroundColor(.white)
-                                .padding()
-                                .background(Color.black.opacity(0.6))
-                                .clipShape(Circle())
-                        }
-                        
-                        Spacer()
-                        
                         // Display current angle being captured
                         Text(selectedAngle.wrappedValue.angleDescription)
                             .font(.headline)
@@ -78,11 +64,12 @@ struct CameraView: View {
                         
                         Spacer()
                         
+                        // Flash button moved to top right
                         Button(action: {
-                            isFrontCamera.toggle()
-                            cameraController.switchCamera()
+                            isFlashOn.toggle()
+                            cameraController.setFlashMode(isFlashOn ? .on : .off)
                         }) {
-                            Image(systemName: "arrow.triangle.2.circlepath.camera")
+                            Image(systemName: isFlashOn ? "bolt.fill" : "bolt.slash.fill")
                                 .font(.system(size: 20))
                                 .foregroundColor(.white)
                                 .padding()
@@ -123,10 +110,12 @@ struct CameraView: View {
                         
                         Spacer()
                         
+                        // Camera flip button moved to bottom right
                         Button(action: {
-                            // Additional action button
+                            isFrontCamera.toggle()
+                            cameraController.switchCamera()
                         }) {
-                            Image(systemName: "gear")
+                            Image(systemName: "arrow.triangle.2.circlepath.camera")
                                 .font(.system(size: 20))
                                 .foregroundColor(.white)
                                 .padding()
@@ -696,8 +685,12 @@ class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureDelegat
         let settings = AVCapturePhotoSettings()
         
         // Set the flash mode if using back camera
-        if let deviceInput = captureSession.inputs.first as? AVCaptureDeviceInput, deviceInput.device.position == .back {
-            if deviceInput.device.isFlashAvailable {
+        if let deviceInput = captureSession.inputs.first as? AVCaptureDeviceInput {
+            // Log which camera is being used for capture
+            print("CameraController: Capturing photo with \(deviceInput.device.position == .front ? "front" : "back") camera")
+            
+            // Set flash mode only for back camera
+            if deviceInput.device.position == .back && deviceInput.device.isFlashAvailable {
                 settings.flashMode = currentFlashMode
                 print("CameraController: Set flash mode to \(currentFlashMode.rawValue)")
             }
@@ -903,36 +896,24 @@ struct PhotoConfirmationView: View {
                 Spacer()
                 
                 HStack(spacing: 40) {
-                    Button(action: {
+                    // Retake button with app UI style
+                    CTButton(
+                        title: "Retake",
+                        icon: "arrow.counterclockwise",
+                        style: .neon,
+                        customNeonColor: DesignSystem.Colors.neonOrange
+                    ) {
                         isPresented = false
-                    }) {
-                        VStack {
-                            Image(systemName: "arrow.counterclockwise")
-                                .font(.system(size: 24))
-                                .foregroundColor(.white)
-                            Text("Retake")
-                                .foregroundColor(.white)
-                                .font(.system(size: 14))
-                        }
-                        .frame(width: 80, height: 80)
-                        .background(Color.red.opacity(0.8))
-                        .clipShape(Circle())
                     }
                     
-                    Button(action: {
+                    // Use photo button with app UI style
+                    CTButton(
+                        title: "Use Photo",
+                        icon: "checkmark",
+                        style: .neon,
+                        customNeonColor: DesignSystem.Colors.neonGreen
+                    ) {
                         onConfirm()
-                    }) {
-                        VStack {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 24))
-                                .foregroundColor(.white)
-                            Text("Use Photo")
-                                .foregroundColor(.white)
-                                .font(.system(size: 14))
-                        }
-                        .frame(width: 80, height: 80)
-                        .background(Color.green.opacity(0.8))
-                        .clipShape(Circle())
                     }
                 }
                 .padding(.bottom, 40)

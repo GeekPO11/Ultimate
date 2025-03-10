@@ -18,6 +18,20 @@ struct CTProgressChart: View {
         DesignSystem.Colors.secondaryAction
     ]
     
+    // Custom colors for pie chart
+    private let pieChartColors: [Color] = [
+        DesignSystem.Colors.primaryAction,
+        DesignSystem.Colors.neonBlue,
+        DesignSystem.Colors.neonGreen,
+        DesignSystem.Colors.neonOrange,
+        DesignSystem.Colors.neonPurple,
+        DesignSystem.Colors.accent,
+        Color(hex: "00C7BE"), // Teal
+        Color(hex: "8A2BE2"), // BlueViolet
+        Color(hex: "FF6347"), // Tomato
+        Color(hex: "20B2AA")  // LightSeaGreen
+    ]
+    
     // MARK: - Initialization
     init(
         data: [ProgressDataPoint],
@@ -231,13 +245,13 @@ struct CTProgressChart: View {
     
     private var enhancedPieChart: some View {
         Chart {
-            ForEach(data) { item in
+            ForEach(Array(data.enumerated()), id: \.element.id) { index, item in
                 SectorMark(
                     angle: .value("Value", item.value),
                     innerRadius: .ratio(0.6),
                     angularInset: 1.5
                 )
-                .foregroundStyle(by: .value("Category", item.category ?? "Unknown"))
+                .foregroundStyle(pieChartColors[index % pieChartColors.count])
                 .annotation(position: .overlay) {
                     Text("\(Int(item.value))")
                         .font(DesignSystem.Typography.caption2)
@@ -246,18 +260,6 @@ struct CTProgressChart: View {
                 }
             }
         }
-        .chartForegroundStyleScale([
-            "Completed": DesignSystem.Colors.primaryAction,
-            "Missed": DesignSystem.Colors.accent,
-            "In Progress": DesignSystem.Colors.secondaryAction,
-            "Workout": DesignSystem.Colors.primaryAction,
-            "Nutrition": DesignSystem.Colors.secondaryAction,
-            "Water": DesignSystem.Colors.neonBlue,
-            "Reading": DesignSystem.Colors.neonOrange,
-            "Photo": DesignSystem.Colors.neonPurple,
-            "Custom": DesignSystem.Colors.secondaryText,
-            "Unknown": DesignSystem.Colors.secondaryText
-        ])
     }
     
     private var enhancedProgressChart: some View {
@@ -314,7 +316,7 @@ struct CTProgressChart: View {
                 if !categories.isEmpty {
                     ForEach(categories, id: \.self) { category in
                         legendItem(
-                            color: categoryColor(for: category),
+                            color: categoryColor(for: category, index: categories.firstIndex(of: category) ?? 0),
                             label: category
                         )
                     }
@@ -331,7 +333,8 @@ struct CTProgressChart: View {
                     label: "Value"
                 )
                 
-                if data.first?.targetValue ?? 0 > 0 {
+                // Only show target if any data point has a non-zero target value
+                if data.contains(where: { $0.targetValue > 0 && $0.targetValue != $0.value }) {
                     legendItem(
                         color: DesignSystem.Colors.accent,
                         label: "Target"
@@ -354,29 +357,9 @@ struct CTProgressChart: View {
         }
     }
     
-    private func categoryColor(for category: String) -> Color {
-        switch category {
-        case "Completed":
-            return DesignSystem.Colors.primaryAction
-        case "Missed":
-            return DesignSystem.Colors.accent
-        case "In Progress":
-            return DesignSystem.Colors.secondaryAction
-        case "Workout":
-            return DesignSystem.Colors.primaryAction
-        case "Nutrition":
-            return DesignSystem.Colors.secondaryAction
-        case "Water":
-            return DesignSystem.Colors.neonBlue
-        case "Reading":
-            return DesignSystem.Colors.neonOrange
-        case "Photo":
-            return DesignSystem.Colors.neonPurple
-        case "Custom":
-            return DesignSystem.Colors.secondaryText
-        default:
-            return DesignSystem.Colors.primaryAction
-        }
+    private func categoryColor(for category: String, index: Int = 0) -> Color {
+        // Use the index to get a color from the pieChartColors array
+        return pieChartColors[index % pieChartColors.count]
     }
 }
 

@@ -201,13 +201,15 @@ struct ChallengeAnalyticsView: View {
     /// Task type breakdown chart
     private var taskTypeBreakdownChart: some View {
         CTProgressChart(
-            data: taskCompletionByType.map { typeData in
-                ProgressDataPoint(
-                    date: Date(),
-                    value: Double(typeData.completed),
-                    category: typeData.type.rawValue.capitalized
-                )
-            },
+            data: taskCompletionByType
+                .filter { $0.completed > 0 } // Only show task types with completed tasks
+                .map { typeData in
+                    ProgressDataPoint(
+                        date: Date(),
+                        value: Double(typeData.completed),
+                        category: typeData.type.rawValue.capitalized
+                    )
+                },
             chartType: .pie,
             title: "Task Breakdown",
             subtitle: "Completion by task type"
@@ -440,7 +442,7 @@ struct ChallengeAnalyticsView: View {
                 total: data.total,
                 completed: data.completed
             )
-        }
+        }.sorted { $0.completed > $1.completed } // Sort by completion count
     }
     
     /// Loads streak data

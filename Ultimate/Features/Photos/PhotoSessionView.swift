@@ -13,6 +13,7 @@ struct PhotoSessionView: View {
     @State private var savedPhotoAngles: Set<PhotoAngle> = []
     @State private var showingCameraView = false
     @State private var showingPhotoLibrary = false
+    @State private var showingAngleSelector = false
     
     private let photoService = ProgressPhotoService()
     private var angles: [PhotoAngle] { PhotoAngle.allCases }
@@ -33,6 +34,32 @@ struct PhotoSessionView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 24) {
+                // Angle selector - improved design
+                CTCard(style: .glass) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Select Angle:")
+                            .font(DesignSystem.Typography.headline)
+                            .foregroundColor(DesignSystem.Colors.primaryText)
+                            .padding(.horizontal)
+                        
+                        // Grid of angle options
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                            ForEach(0..<angles.count, id: \.self) { index in
+                                AngleSelectionCard(
+                                    angle: angles[index],
+                                    isSelected: currentAngleIndex == index,
+                                    action: {
+                                        currentAngleIndex = index
+                                    }
+                                )
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
+                    .padding(.vertical, 12)
+                }
+                .padding(.horizontal)
+                
                 // Progress indicator
                 ProgressIndicatorView(
                     angles: angles,
@@ -117,33 +144,18 @@ struct PhotoSessionView: View {
     /// Saves all captured photos
     private func saveAllPhotos() {
         for (angle, image) in capturedImages {
-            // Skip angles that have already been saved
+            // Skip angles that have already been saved during this session
             if savedPhotoAngles.contains(angle) {
                 Logger.debug("Skipping already saved photo for angle: \(angle.rawValue)", category: .photos)
                 continue
             }
             
-            guard let fileURL = photoService.savePhoto(
-                image: image,
-                challengeId: selectedChallenge?.id ?? UUID(),
-                angle: angle
-            ) else {
-                continue
-            }
+            // Save the photo (this will replace any existing photo for today with the same angle)
+            saveProgressPhoto(angle: angle, image: image)
             
-            let newPhoto = ProgressPhoto(
-                challenge: selectedChallenge,
-                date: Date(),
-                angle: angle,
-                fileURL: fileURL,
-                isBlurred: false
-            )
-            
-            modelContext.insert(newPhoto)
-            Logger.info("Saved photo for angle: \(angle.rawValue) during session completion", category: .photos)
+            // Mark this angle as saved
+            savedPhotoAngles.insert(angle)
         }
-        
-        try? modelContext.save()
         
         // Check if all angles have photos and mark tasks as complete
         if capturedImages.count == PhotoAngle.allCases.count {
@@ -199,19 +211,32 @@ struct PhotoSessionView: View {
             return
         }
         
-        // Query for existing photos to prevent duplicates
+        // Query for existing photos to check for same-day photos with the same angle
         let descriptor = FetchDescriptor<ProgressPhoto>()
         do {
             let allPhotos = try modelContext.fetch(descriptor)
             
-            // Check if a photo with this URL already exists
-            let existingPhotos = allPhotos.filter { 
-                $0.fileURL.lastPathComponent == fileURL.lastPathComponent 
+            // Get today's date (start of day)
+            let today = Calendar.current.startOfDay(for: Date())
+            
+            // Check if a photo with the same angle was taken today
+            let sameDayPhotos = allPhotos.filter { photo in
+                photo.angle == angle &&
+                Calendar.current.isDate(photo.date, inSameDayAs: today) &&
+                (selectedChallenge == nil || photo.challenge?.id == selectedChallenge?.id)
             }
             
-            if !existingPhotos.isEmpty {
-                print("PhotoSessionView: Duplicate photo detected, not saving again")
-                return
+            // If there's an existing photo for today with the same angle, delete it
+            if !sameDayPhotos.isEmpty {
+                print("PhotoSessionView: Found existing photo for today with same angle, replacing it")
+                for photo in sameDayPhotos {
+                    // Delete the file if it exists
+                    if FileManager.default.fileExists(atPath: photo.fileURL.path) {
+                        try? FileManager.default.removeItem(at: photo.fileURL)
+                    }
+                    // Delete the model object
+                    modelContext.delete(photo)
+                }
             }
             
             print("PhotoSessionView: Creating new ProgressPhoto object")
@@ -480,6 +505,38 @@ struct NavigationButtonsView: View {
         }
         .padding(.horizontal)
         .padding(.bottom)
+    }
+}
+
+// MARK: - Angle Selection Card
+
+/// Card for selecting a photo angle
+struct AngleSelectionCard: View {
+    let angle: PhotoAngle
+    let isSelected: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            HStack {
+                Text(angle.description)
+                    .font(DesignSystem.Typography.body)
+                    .fontWeight(isSelected ? .semibold : .regular)
+                    .foregroundColor(isSelected ? DesignSystem.Colors.primaryAction : DesignSystem.Colors.primaryText)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(isSelected ? DesignSystem.Colors.primaryAction.opacity(0.15) : Color.clear)
+            .cornerRadius(8)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(isSelected ? DesignSystem.Colors.primaryAction : DesignSystem.Colors.dividers, lineWidth: isSelected ? 2 : 1)
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 }
 

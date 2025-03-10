@@ -114,77 +114,6 @@ struct TodayView: View {
             .refreshable {
                 generateTasksIfNeeded()
             }
-            
-            // Overlay for challenge details
-            if case .challengeDetail(let challenge) = activeSheet {
-                Color.black.opacity(0.5)
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        // Allow tapping outside to dismiss
-                        withAnimation {
-                            activeSheet = nil
-                        }
-                    }
-                
-                VStack(spacing: 0) {
-                    // Navigation bar
-                    HStack {
-                        Text("Challenge Details")
-                            .font(DesignSystem.Typography.title2)
-                            .fontWeight(.bold)
-                            .foregroundColor(DesignSystem.Colors.primaryText)
-                        
-                        Spacer()
-                        
-                        Button {
-                            withAnimation {
-                                activeSheet = nil
-                                
-                                // Force refresh tasks after returning from challenge detail
-                                if let tasksManager = tasksManager {
-                                    let _ = tasksManager.generateDailyTasks()
-                                }
-                            }
-                        } label: {
-                            Text("Done")
-                                .foregroundColor(DesignSystem.Colors.primaryAction)
-                        }
-                    }
-                    .padding()
-                    .background(DesignSystem.Colors.cardBackground.opacity(0.95))
-                    
-                    // Content
-                    ScrollView {
-                        if challenge.tasks.isEmpty {
-                            VStack {
-                                ProgressView("Loading challenge details...")
-                                    .padding()
-                                Text("Please wait while we load the challenge data.")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                    .multilineTextAlignment(.center)
-                                    .padding()
-                            }
-                            .padding()
-                            .background(DesignSystem.Colors.cardBackground)
-                            .cornerRadius(16)
-                            .padding()
-                        } else {
-                            ChallengeDetailSheet(challenge: challenge, onStart: {
-                                // This is already an active challenge, so we don't need to start it
-                            })
-                            .padding()
-                        }
-                    }
-                }
-                .background(DesignSystem.Colors.background)
-                .cornerRadius(16)
-                .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 5)
-                .padding(.vertical, 40)
-                .padding(.horizontal)
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
-                .zIndex(100) // Ensure it's above other content
-            }
         }
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $activeSheet, content: { sheet in
@@ -209,6 +138,8 @@ struct TodayView: View {
                             }
                         })
                 }
+            } else if case .challengeDetail(let challenge) = sheet {
+                ChallengeDetailView(challenge: challenge)
             }
         })
         .alert("No Active Challenge", isPresented: $showingNoActiveChallengeAlert) {
@@ -307,10 +238,8 @@ struct TodayView: View {
                             print("TodayView: Challenge ID - \(challenge.id)")
                             print("TodayView: Challenge has \(challenge.tasks.count) tasks")
                             
-                            // Use withAnimation to show the challenge detail overlay
-                            withAnimation(.easeInOut(duration: 0.3)) {
-                                activeSheet = .challengeDetail(challenge)
-                            }
+                            // Present the challenge detail as a sheet
+                            activeSheet = .challengeDetail(challenge)
                         } label: {
                             ChallengeItem(
                                 title: challenge.name,

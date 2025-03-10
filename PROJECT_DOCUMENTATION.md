@@ -1,7 +1,46 @@
 # Ultimate App - Project Documentation
 
 ## Project Overview
-Ultimate is an iOS app for habit tracking and challenge management. It allows users to create and manage challenges, track daily tasks, view progress, and capture photos related to their challenges.
+Ultimate is a premium iOS fitness and habit tracking app designed to help users transform their lives through structured challenges and consistent habit building. The app enables users to create and manage challenges, track daily tasks, visualize progress, and capture progress photos, all wrapped in a modern, gesture-driven UI inspired by visionOS design principles.
+
+## Architecture
+
+### System Architecture
+The Ultimate app follows a clean, modular architecture based on MVVM (Model-View-ViewModel) with Coordinators:
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│                 │     │                 │     │                 │
+│       View      │◄────┤    ViewModel    │◄────┤    Repository   │
+│                 │     │                 │     │                 │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+                                                        │
+                                                        │
+                                                        ▼
+                                             ┌─────────────────┐
+                                             │                 │
+                                             │     Models      │
+                                             │                 │
+                                             └─────────────────┘
+```
+
+- **Views**: SwiftUI views responsible for UI rendering and user interaction
+- **ViewModels**: Contain business logic and transform data for display
+- **Repositories**: Handle data access operations and provide a clean API
+- **Models**: SwiftData models representing the business domain
+
+### Data Flow
+1. User interactions trigger methods in the ViewModel
+2. ViewModels process the request and call appropriate Repository methods
+3. Repositories perform data operations using SwiftData
+4. Changes are observed by the ViewModels through Combine publishers
+5. ViewModels transform and prepare data for display
+6. Views update automatically through @Published properties
+
+### Dependency Management
+- Swift Package Manager for external dependencies
+- Dependency injection for services and repositories
+- Environment objects for shared state across the view hierarchy
 
 ## Directory Structure
 ```
@@ -23,119 +62,386 @@ Ultimate/
 │   ├── Models/
 │   │   ├── Challenge.swift
 │   │   ├── Task.swift
-│   │   └── User.swift
-│   └── Services/
-│       ├── NotificationManager.swift
-│       └── DataManager.swift
+│   │   ├── DailyTask.swift
+│   │   ├── User.swift
+│   │   ├── ProgressPhoto.swift
+│   │   ├── ChecklistItem.swift
+│   │   ├── NotificationPreference.swift
+│   │   ├── TaskCompletionEvent.swift
+│   │   ├── TaskCompletionData.swift
+│   │   ├── PhotoSession.swift
+│   │   └── AnalyticsModels.swift
+│   ├── Services/
+│   │   ├── NotificationManager.swift
+│   │   ├── DataMigrationService.swift
+│   │   ├── NotificationOptimizationService.swift
+│   │   ├── PhotoQualityService.swift
+│   │   ├── TaskTemplateService.swift
+│   │   ├── ProgressAnalyticsService.swift
+│   │   └── TaskHistoryService.swift
+│   ├── ViewModels/
+│   │   ├── ChallengeViewModel.swift
+│   │   ├── TaskViewModel.swift
+│   │   └── ProgressViewModel.swift
+│   ├── Utilities/
+│   │   ├── Logger.swift
+│   │   └── Extensions/
+│   └── Settings/
+│       └── UserSettings.swift
 ├── UI/
 │   ├── Components/
 │   │   ├── CTButton.swift
 │   │   ├── CTCard.swift
 │   │   ├── CTProgressChart.swift
-│   │   └── CTProgressRing.swift
-│   └── DesignSystem/
-│       ├── Colors.swift
-│       └── Typography.swift
+│   │   ├── CTProgressRing.swift
+│   │   └── InteractiveCalendar.swift
+│   ├── DesignSystem/
+│   │   ├── Colors.swift
+│   │   ├── Typography.swift
+│   │   ├── Spacing.swift
+│   │   └── DesignSystem.swift
+│   └── Modifiers/
+│       ├── ButtonStyles.swift
+│       ├── CardStyles.swift
+│       └── AppleMaterial.swift
 └── UltimateApp.swift
 ```
 
-## Recent Improvements
-
-### UI Design
-- Implemented a futuristic Glass UI design across the app for a modern, premium feel
-- Enhanced visual hierarchy with consistent spacing, typography, and color schemes
-- Added subtle animations and transitions for a more engaging user experience
-- Improved card components with glass-like effects, gradients, and shadows
-
-### Progress Tracking
-- Enhanced the progress tracking logic to provide more accurate analysis of task completion
-- Improved integration between task data and visualization components
-- Added comprehensive analytics for challenges with detailed metrics
-- Implemented consistency scoring based on completion rate, streak, and regularity
-
-### Charts and Visualizations
-- Redesigned all charts with a futuristic aesthetic that aligns with the app's UI
-- Enhanced CTProgressChart component with:
-  - Gradient fills and animations
-  - Improved readability and visual appeal
-  - Better responsiveness to different data sets
-  - Support for multiple chart types (bar, line, area, pie, progress)
-- Removed unnecessary legends from charts where they don't add value
-- Added contextual information to make data more meaningful
-
-### Challenge Analytics
-- Completely redesigned the ChallengeAnalyticsView with the Glass UI design
-- Improved chart quality and removed redundant legends
-- Added more detailed statistics and metrics for better insights
-- Enhanced the visual presentation of streak information and consistency scores
-
-### Challenge Detail View
-- Fixed sizing issues to ensure proper display across all devices
-- Improved layout with better spacing and visual hierarchy
-- Enhanced the progress visualization with gradient-filled progress bars
-- Added more detailed statistics and a direct link to analytics
-
 ## Core Features
 
-### Challenge Management
-Users can create, edit, and manage challenges with customizable:
-- Duration (start and end dates)
-- Task types and frequencies
-- Progress tracking metrics
+### 1. Challenge Management
 
-### Daily Task Tracking
-- Daily view of tasks that need to be completed
-- Task completion tracking with status updates
-- Streak tracking for consistent task completion
+#### Overview
+The Challenge Management feature allows users to create, customize, and track various fitness and habit-building challenges, including pre-built templates like 75 Hard, Water Fasting, and 31 Modified, as well as fully customizable challenges.
 
-### Progress Analytics
-- Visual representations of progress over time
-- Detailed analytics for each challenge
-- Consistency scoring and performance metrics
+#### Key Components
+- **ChallengesView**: Main listing of active and completed challenges
+- **ChallengeDetailView**: Detailed view of a specific challenge
+- **ChallengeViewModel**: Manages challenge data and business logic
+- **Challenge Model**: Data structure for challenges
 
-### Photo Capture
-- Ability to capture and store photos related to challenges
-- Photo gallery view for reviewing progress visually
-- Photo detail view with metadata and notes
+#### User Flow
+1. User accesses the Challenges tab
+2. Views list of active and available challenges
+3. Creates a new challenge or selects an existing one
+4. Customizes challenge parameters (duration, tasks, etc.)
+5. Starts the challenge
+6. Views daily progress and completion statistics
 
-## Technical Implementation
+#### Technical Implementation
+- SwiftData for persistent storage of challenges
+- CRUD operations via ViewModel
+- Real-time progress calculations
+- Challenge-specific notifications
 
-### SwiftData Integration
-- Uses SwiftData for persistent storage of challenges, tasks, and photos
-- Implements proper relationships between models
-- Handles data migrations and schema updates
+### 2. Daily Task Tracking
 
-### Notification System
-- Local notifications for task reminders
-- Customizable notification settings
-- Background scheduling of notifications
+#### Overview
+The Daily Task Tracking feature enables users to view and complete tasks for the current day, supporting various task types with specialized tracking interfaces based on the task measurement type (binary, quantity, duration, or checklist).
 
-### Design System
-- Consistent color palette and typography
-- Reusable UI components
-- Accessibility considerations
+#### Key Components
+- **TodayView**: Primary interface for viewing and completing daily tasks
+- **DailyTasksManager**: Service for generating and managing daily tasks
+- **DailyTask Model**: Represents a specific task instance for a particular day
+- **Task Model**: Template for recurring tasks
 
-## Future Enhancements
-- Social sharing capabilities
-- Cloud sync across devices
-- Advanced analytics and insights
-- Gamification elements
-- AI-powered recommendations
+#### Task Measurement Types
+- **Binary**: Simple completion (yes/no)
+- **Quantity**: Numerical value with units (e.g., 8 glasses of water)
+- **Duration**: Time-based (e.g., 45 minutes of reading)
+- **Checklist**: Multiple sub-items to complete
 
-## Development Guidelines
-- Follow Swift style guide and naming conventions
-- Use SwiftUI best practices for view composition
-- Implement proper error handling and logging
-- Write unit tests for core functionality
-- Document public APIs and complex logic
+#### User Flow
+1. User opens the Today tab
+2. Views list of tasks for the current day
+3. Taps a task to access detailed completion interface
+4. Marks task as complete with relevant data
+5. Views completion status and statistics
 
-## Data Models
+#### Technical Implementation
+- SwiftData relationships between Challenge, Task, and DailyTask
+- Custom UI for different task types
+- Background generation of daily tasks
+- Support for retroactive completion
+
+### 3. Progress Analytics
+
+#### Overview
+The Progress Analytics feature provides users with visual representations of their challenge progress, consistency scores, and performance metrics to help them understand their habits and progress over time.
+
+#### Key Components
+- **ProgressTrackingView**: Main analytics interface
+- **ChallengeAnalyticsView**: Challenge-specific analytics
+- **ProgressViewModel**: Manages analytics data
+- **ProgressAnalyticsService**: Calculates metrics and generates visualization data
+
+#### Key Metrics
+- **Completion Rate**: Percentage of tasks completed
+- **Consistency Score**: Measure of regular adherence
+- **Current Streak**: Consecutive days of task completion
+- **Longest Streak**: Record streak for the challenge
+
+#### User Flow
+1. User accesses the Progress tab
+2. Views overall progress across all challenges
+3. Selects a specific challenge for detailed analytics
+4. Explores different time periods (day, week, month, year)
+5. Examines specific metrics and visualizations
+
+#### Technical Implementation
+- Custom chart components for data visualization
+- Time-series analysis of task completion data
+- Aggregation services for summarizing performance
+- Period-based comparisons and trending
+
+### 4. Photo Progress Tracking
+
+#### Overview
+The Photo Progress Tracking feature allows users to capture, organize, and compare progress photos over time, providing visual feedback on physical changes during their challenges.
+
+#### Key Components
+- **PhotosView**: Gallery view of progress photos
+- **PhotoDetailView**: Detailed view with comparison tools
+- **PhotoSession Model**: Groups related photos taken at the same time
+- **ProgressPhoto Model**: Represents individual photos
+- **PhotoQualityService**: Handles image processing and optimization
+
+#### Photo Categories
+- **Front View**: Standard front-facing pose
+- **Side View**: Profile photo from the side
+- **Back View**: Rear-facing pose
+- **Custom**: User-defined angles or poses
+
+#### User Flow
+1. User navigates to the Photos tab
+2. Views photo timeline organized by date
+3. Takes new progress photos within the app
+4. Compares photos from different dates
+5. Views progress over time via visual comparison
+
+#### Technical Implementation
+- PhotoKit integration for camera access
+- Secure photo storage with FileManager
+- On-device processing for privacy
+- Optimized thumbnail generation
+- Side-by-side comparison tools
+
+### 5. Smart Notification System
+
+#### Overview
+The Smart Notification System delivers context-aware, timely reminders based on user preferences, notification strategy, and task types to help users stay on track with their challenges.
+
+#### Key Components
+- **NotificationManager**: Core service for scheduling and managing notifications
+- **NotificationOptimizationService**: Adapts notification timing based on user behavior
+- **NotificationPreference Model**: Stores user preferences for notifications
+
+#### Notification Strategies
+- **Fixed**: Regular notifications at predetermined times
+- **Adaptive**: Notifications that adapt to user completion patterns
+- **Progressive**: Frequency increases as deadlines approach
+- **Minimal**: Only essential reminders for critical tasks
+
+#### User Flow
+1. User configures notification preferences
+2. System schedules notifications based on tasks and preferences
+3. User receives contextual reminders
+4. User can respond directly from notifications
+5. System adapts timing based on response patterns
+
+#### Technical Implementation
+- UNUserNotificationCenter integration
+- Background notification scheduling
+- Actionable notification interfaces
+- Adaptive timing algorithms
+- Quiet hours and do-not-disturb respect
+
+## Design System
+
+### 1. Visual Language
+
+The Ultimate app implements a premium, modern design language inspired by visionOS principles, featuring:
+
+#### Glass Morphism
+- Translucent, frosted-glass backgrounds
+- Subtle backdrop blur effects
+- Light border highlights
+- Depth through layering
+
+#### Color System
+- **Primary Palette**: 
+  - Primary action: Deep purple (#5E17EB)
+  - Secondary action: Teal (#00C7BE)
+  - Background: Dark navy (#141E30)
+- **Semantic Colors**:
+  - Success: Green (#34C759)
+  - Warning: Orange (#FF9500)
+  - Error: Red (#FF3B30)
+  - Info: Blue (#007AFF)
+- **Dynamic Light/Dark adaptations**
+- **Accessibility contrast ratios**
+
+#### Typography System
+- **Font Family**: SF Pro and SF Pro Display
+- **Type Scale**:
+  - Extra large title: 34pt, bold
+  - Large title: 28pt, bold
+  - Title 1: 22pt, bold
+  - Title 2: 20pt, semibold
+  - Headline: 17pt, semibold
+  - Body: 17pt, regular
+  - Callout: 16pt, regular
+  - Subheadline: 15pt, regular
+  - Footnote: 13pt, regular
+  - Caption 1: 12pt, regular
+  - Caption 2: 11pt, regular
+- **Dynamic Type support** for accessibility
+
+#### Spacing System
+- **Base Units**:
+  - xs: 4pt
+  - s: 8pt
+  - m: 16pt
+  - l: 24pt
+  - xl: 32pt
+  - xxl: 48pt
+- **Contextual Spacing**:
+  - Item spacing: 8pt
+  - Group spacing: 16pt
+  - Section spacing: 24pt
+  - Screen padding: 16pt
+  - Card padding: 16pt
+- **Adaptive scaling** based on device size
+
+### 2. Component Library
+
+#### Buttons
+- **Primary Button**: Filled background, prominent
+- **Secondary Button**: Outlined style
+- **Tertiary Button**: Text-only style
+- **Icon Button**: Circular button with icon
+
+#### Cards
+- **Standard Card**: Rounded corners, drop shadow
+- **Glass Card**: Translucent background with blur
+- **Task Card**: Specialized for task display
+- **Progress Card**: Includes progress indicators
+
+#### Navigation
+- **Tab Bar**: Custom floating design
+- **Navigation Bar**: Translucent with blur effect
+- **Modal Presentation**: Custom transitions
+
+#### Progress Indicators
+- **Progress Ring**: Circular progress indicator
+- **Progress Bar**: Linear progress indicator
+- **Streak Counter**: Visual display of streaks
+- **Charts**: Various chart types for analytics
+
+### 3. Animation & Motion
+
+#### Transitions
+- **Page Transitions**: Smooth, spatial transitions between screens
+- **Card Animations**: Spring-based reveal and dismiss
+- **List Animations**: Staggered animations for list items
+
+#### Micro-interactions
+- **Button Feedback**: Scale and opacity changes
+- **Toggle States**: Smooth state transitions
+- **Loading States**: Custom loading animations
+- **Success/Error States**: Visual feedback animations
+
+#### Gesture-driven Interactions
+- **Swipe-to-complete**: Quick task completion
+- **Long-press**: Contextual actions
+- **Pinch-to-zoom**: Photo manipulation
+- **Drag-to-reorder**: List reordering
+
+## User Flows
+
+### 1. Onboarding Flow
+
+```
+┌────────────┐     ┌────────────┐     ┌────────────┐     ┌────────────┐
+│            │     │            │     │            │     │            │
+│  Welcome   ├────►│ User Info  ├────►│Notification├────►│  Feature   │
+│   Screen   │     │ Collection │     │ Permission │     │ Highlights │
+│            │     │            │     │            │     │            │
+└────────────┘     └────────────┘     └────────────┘     └────────────┘
+                                                                │
+                                                                ▼
+                                                         ┌────────────┐
+                                                         │            │
+                                                         │ Challenge  │
+                                                         │ Selection  │
+                                                         │            │
+                                                         └────────────┘
+```
+
+### 2. Challenge Creation Flow
+
+```
+┌────────────┐     ┌────────────┐     ┌────────────┐     ┌────────────┐
+│            │     │            │     │            │     │            │
+│ Challenge  ├────►│ Challenge  ├────►│   Task     ├────►│ Notification│
+│  Gallery   │     │   Type     │     │ Selection  │     │  Settings  │
+│            │     │            │     │            │     │            │
+└────────────┘     └────────────┘     └────────────┘     └────────────┘
+                                                                │
+                                                                ▼
+                                                         ┌────────────┐
+                                                         │            │
+                                                         │ Challenge  │
+                                                         │  Review    │
+                                                         │            │
+                                                         └────────────┘
+```
+
+### 3. Daily Task Completion Flow
+
+```
+┌────────────┐     ┌────────────┐     ┌────────────┐     ┌────────────┐
+│            │     │            │     │            │     │            │
+│  Today     ├────►│   Task     ├────►│  Task      ├────►│ Completion │
+│   Tab      │     │  Details   │     │ Completion │     │ Celebration│
+│            │     │            │     │ Interface  │     │            │
+└────────────┘     └────────────┘     └────────────┘     └────────────┘
+                                                                │
+                                                                ▼
+                                                         ┌────────────┐
+                                                         │            │
+                                                         │  Updated   │
+                                                         │  Progress  │
+                                                         │            │
+                                                         └────────────┘
+```
+
+### 4. Progress Photo Flow
+
+```
+┌────────────┐     ┌────────────┐     ┌────────────┐     ┌────────────┐
+│            │     │            │     │            │     │            │
+│   Photos   ├────►│   Photo    ├────►│   Camera   ├────►│   Review   │
+│    Tab     │     │  Session   │     │  Interface │     │    & Save  │
+│            │     │            │     │            │     │            │
+└────────────┘     └────────────┘     └────────────┘     └────────────┘
+                                                                │
+                                                                ▼
+                                                         ┌────────────┐
+                                                         │            │
+                                                         │   Photo    │
+                                                         │  Gallery   │
+                                                         │            │
+                                                         └────────────┘
+```
+
+## Core Models
 
 ### Challenge (`Core/Models/Challenge.swift`)
 - **Properties**:
   - `id: UUID` - Unique identifier
   - `name: String` - Challenge name
-  - `type: ChallengeType` - Type of challenge (fitness, nutrition, etc.)
+  - `type: ChallengeType` - Type of challenge (75Hard, WaterFasting, etc.)
   - `status: ChallengeStatus` - Current status (inProgress, completed, failed)
   - `startDate: Date?` - When the challenge started
   - `endDate: Date?` - Target completion date
@@ -146,27 +452,30 @@ Users can create, edit, and manage challenges with customizable:
 - **Computed Properties**:
   - `progress: Double` - Completion percentage (0.0-1.0)
   - `currentDay: Int` - Current day in the challenge
-- **Relationships**:
-  - One-to-many with Task
-  - One-to-many with ProgressPhoto
+  - `daysRemaining: Int` - Days left in the challenge
+  - `completedDays: Int` - Days already completed
+- **Methods**:
+  - `startChallenge()` - Begins the challenge
+  - `completeChallenge()` - Marks the challenge as completed
+  - `failChallenge()` - Marks the challenge as failed
 
 ### Task (`Core/Models/Task.swift`)
 - **Properties**:
   - `id: UUID` - Unique identifier
   - `name: String` - Task name
   - `taskDescription: String` - Description of the task
-  - `type: TaskType` - Type of task
+  - `type: TaskType` - Type of task (workout, nutrition, etc.)
   - `frequency: TaskFrequency` - How often the task repeats
+  - `measurementType: TaskMeasurementType` - How the task is measured
   - `timeOfDayMinutes: Int?` - Time of day in minutes from midnight
-  - `durationMinutes: Int?` - Duration in minutes
-  - `targetValue: Double?` - Target value (e.g., pages to read)
-  - `targetUnit: String?` - Unit for target value
-  - `scheduledTime: Date?` - When the task should be performed
+  - `targetQuantity: Double?` - Target quantity for quantity-based tasks
+  - `quantityUnit: String?` - Unit for quantity
+  - `targetDurationMinutes: Int?` - Target duration for duration-based tasks
+  - `checklistItems: [ChecklistItem]` - Items for checklist-based tasks
   - `challenge: Challenge?` - Associated challenge
-  - `isCompleted: Bool` - Whether the task is completed
-- **Relationships**:
-  - Many-to-one with Challenge
-  - One-to-many with DailyTask
+- **Computed Properties**:
+  - `timeOfDay: DateComponents?` - Formatted time of day
+  - `completionPercentage: Double` - Progress towards completion
 
 ### DailyTask (`Core/Models/DailyTask.swift`)
 - **Properties**:
@@ -179,1117 +488,128 @@ Users can create, edit, and manage challenges with customizable:
   - `challenge: Challenge?` - Associated challenge
   - `notes: String?` - Notes for this daily task
   - `actualValue: Double?` - Actual value achieved
-  - `completionTime: Date?` - When the task was completed
+  - `completedQuantity: Double?` - Quantity completed
+  - `completedDurationMinutes: Int?` - Duration completed
+  - `completedChecklistItems: [ChecklistItem]` - Completed checklist items
 - **Methods**:
   - `complete(actualValue:notes:)` - Marks task as completed
+  - `completeWithQuantity(_ quantity: Double, notes:)` - Completes with quantity
+  - `completeWithDuration(_ minutes: Int, notes:)` - Completes with duration
+  - `updateChecklistItemCompletion(itemId:isCompleted:)` - Updates checklist item
   - `markInProgress(notes:)` - Marks task as in progress
   - `markMissed(notes:)` - Marks task as missed
   - `markFailed(notes:)` - Marks task as failed
   - `reset()` - Resets task to not started
-- **Relationships**:
-  - Many-to-one with Task
-  - Many-to-one with Challenge
+
+### User (`Core/Models/User.swift`)
+- **Properties**:
+  - `id: UUID` - Unique identifier
+  - `name: String` - User's name
+  - `email: String?` - User's email
+  - `profileImageURL: URL?` - Profile image location
+  - `heightCm: Double?` - Height in centimeters
+  - `weightKg: Double?` - Weight in kilograms
+  - `notificationPreferences: NotificationPreferences` - Notification settings
+  - `unitPreferences: UnitPreferences` - Preferred units
+  - `appearancePreference: String` - Theme preference
+  - `hasCompletedOnboarding: Bool` - Onboarding status
+- **Methods**:
+  - `updateProfile(name:email:...)` - Updates profile information
+  - `updateNotificationPreferences(_:)` - Updates notification settings
+  - `completeOnboarding()` - Marks onboarding as complete
 
 ### ProgressPhoto (`Core/Models/ProgressPhoto.swift`)
 - **Properties**:
   - `id: UUID` - Unique identifier
   - `challenge: Challenge?` - Associated challenge
   - `date: Date` - When the photo was taken
-  - `angle: PhotoAngle` - Angle of the photo (front, leftSide, rightSide, back)
+  - `angle: PhotoAngle` - Angle of the photo (front, side, back)
   - `fileURL: URL` - File location
+  - `isBlurred: Bool` - Whether the photo is blurred
   - `notes: String?` - Optional notes
-  - `isBlurred: Bool` - Whether the photo is blurred for privacy
-  - `createdAt: Date` - Creation date
-  - `updatedAt: Date` - Last update date
-- **Relationships**:
-  - Many-to-one with Challenge
+  - `session: PhotoSession?` - Associated photo session
+- **Methods**:
+  - `blurPhoto()` - Applies blurring for privacy
+  - `unblurPhoto()` - Removes blurring
 
-### PhotoAngle (enum in `Core/Models/ProgressPhoto.swift`)
-- **Cases**:
-  - `front` - Front view
-  - `leftSide` - Left side view
-  - `rightSide` - Right side view
-  - `back` - Back view
-- **Properties**:
-  - `description: String` - Human-readable description
-  - `icon: String` - System icon name (updated to use more appropriate figure-based icons)
+## Services
 
-### ProgressPhotoService (class in `Core/Models/ProgressPhoto.swift`)
-- **Key Methods**:
-  - `savePhoto(image:challengeId:angle:) -> URL?` - Saves a photo to the app's storage
-  - `loadPhoto(from:) -> UIImage?` - Loads a photo from storage
-  - `deletePhoto(at:) -> Bool` - Deletes a photo from storage
-  - `blurPhoto(image:radius:) -> UIImage?` - Applies a blur effect for privacy
-  - `savePhotoToLibrary(image:completion:)` - Saves a photo to the user's photo library
+### NotificationManager (`Core/Services/NotificationManager.swift`)
+Manages all notification scheduling, handling, and user preferences.
 
-## Feature Modules
+### DataMigrationService (`Core/Services/DataMigrationService.swift`)
+Handles database schema migrations and data transfers between app versions.
 
-### Challenges Module
+### PhotoQualityService (`Core/Services/PhotoQualityService.swift`)
+Processes and optimizes photos for storage and display.
 
-#### ChallengesView (`Features/Challenges/ChallengesView.swift`)
-- **Purpose**: Main view for managing challenges
-- **Key State Variables**:
-  - `@Query private var challenges: [Challenge]` - All challenges
-  - `@State private var activeChallenges: [Challenge]` - Currently active challenges
-  - `@State private var showingAddChallenge: Bool` - Controls new challenge sheet
-  - `@State private var selectedCategory: ChallengeCategory` - Selected category filter
-- **Key Methods**:
-  - `stopChallenge(name: String, type: ChallengeType)` - Stops a challenge by name and type
-  - `isChallengeActive(name: String, type: ChallengeType) -> Bool` - Checks if a challenge is active
-  - `createChallenge(...)` - Creates a new challenge
-  - `filterChallenges()` - Filters challenges based on status and category
-- **UI Sections**:
-  - Active challenges section
-  - Upcoming challenges section
-  - Completed challenges section
-  - Challenge selection view
-  - Empty state view
+### ProgressAnalyticsService (`Core/Services/ProgressAnalyticsService.swift`)
+Calculates metrics and generates visualization data for progress tracking.
 
-#### ChallengeDetailView (`Features/Challenges/ChallengeDetailView.swift`)
-- **Purpose**: Shows details for a specific challenge
-- **Key Parameters**:
-  - `challenge: Challenge` - The challenge to display
-- **UI Sections**:
-  - Custom navigation bar with challenge name and done button
-  - Challenge info header with progress ring
-  - Tab-based interface (Overview, Tasks, Analytics)
-  - Task cards with icons and descriptions
-- **Recent Changes**:
-  - Updated to use custom navigation bar instead of standard navigation
-  - Applied glass design to match app's visual style
-  - Improved tab selector with better visual feedback
-  - Enhanced layout with proper spacing and padding
+### TaskHistoryService (`Core/Services/TaskHistoryService.swift`)
+Manages historical task data and provides access to past completion records.
 
-#### ChallengeDetailSheet (`Features/Challenges/ChallengesView.swift`)
-- **Purpose**: Shows details for a challenge before starting it
-- **Key Parameters**:
-  - `challenge: Challenge` - The challenge to display
-  - `onStart: () -> Void` - Callback when starting the challenge
-- **UI Sections**:
-  - Challenge header
-  - Challenge description
-  - Daily tasks
-  - Benefits
-  - Action button
-- **Recent Changes**:
-  - Updated navigation bar to use "Done" button instead of "Cancel" for consistency
-  - Improved presentation with overlay instead of sheet for better reliability
+### TaskTemplateService (`Core/Services/TaskTemplateService.swift`)
+Provides predefined task templates for common challenge types.
 
-### Daily Tasks Module
+## Testing Strategy
 
-#### TodayView (`Features/DailyTasks/TodayView.swift`)
-- **Purpose**: Shows and manages tasks for the current day
-- **Key State Variables**:
-  - `@Query private var allChallenges: [Challenge]` - All challenges
-  - `@Query private var allDailyTasks: [DailyTask]` - All daily tasks
-  - `@State private var activeSheet: SheetType?` - Controls which sheet is shown
-  - `@State private var tasksManager: DailyTasksManager?` - Manager for daily tasks
-- **Key Computed Properties**:
-  - `dailyTasks: [DailyTask]` - Tasks for today
-  - `sortedDailyTasks: [DailyTask]` - Sorted tasks for today
-  - `activeChallenges: [Challenge]` - Currently active challenges
-- **Key Methods**:
-  - `completeTask(dailyTask:)` - Marks a task as completed
-  - `missTask(dailyTask:)` - Marks a task as missed
-  - `resetTask(dailyTask:)` - Resets a task to pending
-- **UI Sections**:
-  - Header with date and greeting
-  - Daily progress summary
-  - Active challenges section
-  - Today's tasks section
-  - Empty state view
+### Unit Tests
+- Model validation and business logic
+- Service layer functionality
+- ViewModel transformation logic
 
-#### TaskDetailView (`Features/DailyTasks/TodayView.swift`)
-- **Purpose**: Shows details for a specific daily task
-- **Key Parameters**:
-  - `task: DailyTask` - The task to display
-  - `tasksManager: DailyTasksManager?` - Manager for daily tasks
-- **Key State Variables**:
-  - `@State private var notes: String` - Notes for the task
-  - `@State private var actualValue: String` - Actual value achieved
-  - `@State private var selectedStatus: TaskCompletionStatus?` - Selected status
-- **Key Methods**:
-  - `saveNotes()` - Saves notes to the task
-  - `updateTaskStatus()` - Updates the task status
-- **UI Sections**:
-  - Task header
-  - Task details
-  - Task status
-  - Notes section
-  - Action buttons
+### UI Tests
+- Critical user flows
+- Accessibility compliance
+- UI component rendering
 
-#### DailyTasksManager (`Features/DailyTasks/DailyTasksManager.swift`)
-- **Purpose**: Manages the creation and updating of daily tasks
-- **Key Methods**:
-  - `createDailyTasksIfNeeded()` - Creates daily tasks for active challenges
-  - `createDailyTask(for:on:)` - Creates a daily task for a specific task and date
-  - `completeTask(_:actualValue:notes:)` - Marks a task as completed
-  - `markTaskInProgress(_:notes:)` - Marks a task as in progress
-  - `markTaskMissed(_:notes:)` - Marks a task as missed
-  - `markTaskFailed(_:notes:)` - Marks a task as failed
-  - `resetTask(_:)` - Resets a task to not started
-  - `updateChallengeProgress(for:)` - Updates challenge progress
+### Integration Tests
+- Data persistence and retrieval
+- Notification scheduling and handling
+- Photo capture and storage
 
-### Notification System
+## Development Guidelines
 
-#### NotificationManager (`Core/Services/NotificationManager.swift`)
-- **Purpose**: Manages app notifications with intelligent scheduling based on challenge and task types
-- **Key Properties**:
-  - `@Published var isAuthorized: Bool` - Whether notifications are authorized
-- **Key Methods**:
-  - `requestAuthorization()` - Requests notification permission from the user
-  - `scheduleNotificationsForChallenge(_ challenge: Challenge)` - Schedules notifications for a challenge
-  - `removeNotificationsForChallenge(_ challenge: Challenge)` - Removes notifications for a challenge
-- **Challenge-Specific Notification Logic**:
-  - **75 Hard Challenge**:
-    - Morning workout reminder at 6:00 AM
-    - Evening workout reminder at 5:00 PM
-    - Water reminders every 2 hours from 8 AM to 8 PM
-    - Reading reminder at 9:00 PM
-    - Progress photo reminder at 8:00 AM
-  - **Water Fasting Challenge**:
-    - Hydration reminders every hour from 8 AM to 8 PM
-    - Fasting milestone notifications at key intervals (12h, 16h, 20h, 24h, 36h, 48h, 60h, 72h)
-    - Weight tracking reminder at 7:00 AM
-  - **Habit Builder Challenge**:
-    - Morning habit reminder at 7:30 AM
-    - Midday check-in at 12:30 PM
-    - Evening habit reminder at 7:00 PM
-    - Daily reflection reminder at 9:00 PM
-  - **Custom Challenges**:
-    - Notifications scheduled based on task types and scheduled times
-- **Task-Specific Notification Logic**:
-  - **Workout Tasks**: Scheduled at task's time or defaults to 6 AM/5 PM
-  - **Water Tasks**: Reminders every 2 hours from 8 AM to 8 PM
-  - **Reading Tasks**: Evening reminder at 9:00 PM
-  - **Nutrition Tasks**: Meal reminders at 7 AM (breakfast), 12 PM (lunch), 6 PM (dinner)
-  - **Fasting Tasks**: Start and end reminders based on fasting window
-  - **Habit Tasks**: Morning (7:30 AM), midday (12:30 PM), and evening (7:00 PM) reminders
-  - **Weight Tasks**: Morning reminder at 7:00 AM
-  - **Photo Tasks**: Morning reminder at 8:00 AM
-  - **Meditation Tasks**: Morning reminder at 7:00 AM or at scheduled time
-  - **Sleep Tasks**: Bedtime reminder at 10:00 PM
-  - **Custom Tasks**: Scheduled at task's time or defaults to noon
+### Code Style
+- Follow Swift API Design Guidelines
+- Use clear, descriptive naming
+- Document public APIs with documentation comments
+- Use meaningful commit messages
 
-### Progress Module
+### Performance Considerations
+- Optimize image loading and processing
+- Use lazy loading for list views
+- Implement efficient notification handling
+- Follow memory management best practices
 
-#### ProgressTrackingView (`Features/Progress/ProgressTrackingView.swift`)
-- **Purpose**: Shows progress for active challenges
-- **Key State Variables**:
-  - `@Query(sort: \Challenge.startDate) private var challenges: [Challenge]` - All challenges
-  - `@Query(sort: \DailyTask.date) private var dailyTasks: [DailyTask]` - All daily tasks
-  - `@State private var selectedTimeFrame: TimeFrame` - Selected time frame
-- **Key Computed Properties**:
-  - `activeChallenge: Challenge?` - Returns the first active challenge
-- **Key Methods**:
-  - `getCurrentStreak() -> Int` - Calculates current streak
-  - `getBestStreak() -> Int` - Calculates best streak historically
-  - `getTrendData() -> [ProgressDataPoint]` - Generates trend chart data
-  - `getChartData() -> [(date: Date, completed: Int, missed: Int)]` - Generates task completion data
-  - `getTaskCompletionStats(for: Challenge) -> (completed: Int, total: Int, completionRate: Double)` - Gets task completion stats
-- **UI Components**:
-  - Time frame selector
-  - Challenge progress summary
-  - Overall progress summary
-  - Task completion chart
-  - Trend chart
-  - Streak tracking card
+### Accessibility
+- Support Dynamic Type for text scaling
+- Ensure proper VoiceOver support
+- Maintain sufficient color contrast
+- Provide alternative text for images
 
-### Photos Module
-
-#### PhotosView (`Features/Photos/PhotosView.swift`)
-- **Purpose**: Shows and manages progress photos
-- **Key State Variables**:
-  - `@Query private var photos: [ProgressPhoto]` - All progress photos
-  - `@State private var selectedChallenge: Challenge?` - Selected challenge for filtering
-  - `@State private var selectedAngle: PhotoAngle = .front` - Selected photo angle
-  - `@State private var showingPhotoSessionSheet = false` - Controls photo session sheet
-- **Key Methods**:
-  - `hasPhotoForToday(angle: PhotoAngle) -> Bool` - Checks if there's a photo for today for a specific angle
-  - `savePhoto(image: UIImage)` - Saves a photo to the database (updated to fix duplication issue)
-- **UI Components**:
-  - Challenge selector
-  - Photo capture section
-  - Photo gallery
-  - Comparison tools section
-- **Recent Changes**:
-  - Fixed photo duplication issue by improving duplicate detection logic
-  - Updated to replace existing photos for the same day and angle instead of creating duplicates
-
-#### PhotoSessionView (`Features/Photos/PhotoSessionView.swift`)
-- **Purpose**: Guides the user through capturing photos from all 4 angles
-- **Key State Variables**:
-  - `@State private var currentAngleIndex = 0` - Current angle being captured
-  - `@State private var capturedImages: [PhotoAngle: UIImage] = [:]` - Captured images for each angle
-  - `@State private var showingCameraView = false` - Controls camera view
-  - `@State private var showingPhotoLibrary = false` - Controls photo library picker
-- **Key Methods**:
-  - `getInstructionsForAngle(_ angle: PhotoAngle) -> String` - Gets instructions for a specific angle
-  - `saveAllPhotos()` - Saves all captured photos to the database
-- **UI Components**:
-  - Progress indicator
-  - Angle instructions
-  - Image preview
-  - Capture buttons
-  - Navigation buttons
-- **Important Implementation Details**:
-  - Creates a binding for `currentAngle` to pass to `CameraView` and `PhotoPicker`
-  - Uses a sheet to present `CameraView` and `PhotoPicker`
-
-#### CameraView (`Features/Photos/CameraView.swift`)
-- **Purpose**: Custom camera interface for taking progress photos
-- **Key Parameters**:
-  - `selectedChallenge: Challenge?` - Challenge to associate with the photo
-  - `selectedAngle: Binding<PhotoAngle>` - Angle being captured
-  - `onPhotoTaken: (UIImage) -> Void` - Callback when a photo is taken
-- **Key State Variables**:
-  - `@StateObject private var cameraController = CameraController()` - Controller for camera operations
-  - `@State private var showingCameraPermissionAlert = false` - Controls camera permission alert
-  - `@State private var showingCountdown = false` - Controls countdown timer
-  - `@State private var countdown = 3` - Countdown value
-  - `@State private var flashMode: AVCaptureDevice.FlashMode = .off` - Flash mode
-  - `@State private var isFrontCamera = false` - Whether front camera is active
-  - `@State private var cameraInitialized = false` - Whether camera is initialized
-- **Key Methods**:
-  - `toggleFlash()` - Toggles flash mode
-  - `startCountdown()` - Starts countdown timer
-  - `capturePhoto()` - Captures a photo
-  - `silhouetteShape(for:in:) -> some Shape` - Creates silhouette shape for positioning
-- **UI Components**:
-  - Camera preview
-  - Silhouette overlay
-  - Camera controls (close, flash, capture, timer, switch camera)
-  - Angle indicator
-- **Important Implementation Details**:
-  - Uses `AVFoundation` for camera access
-  - Initializes camera in `onAppear`
-  - Handles camera permissions
-  - Provides visual guidance with silhouette overlay
-
-#### CameraController (class in `Features/Photos/CameraView.swift`)
-- **Purpose**: Manages camera operations
-- **Key Properties**:
-  - `captureSession: AVCaptureSession` - Session for capturing photos
-  - `previewLayer: AVCaptureVideoPreviewLayer` - Layer for displaying camera preview
-- **Key Methods**:
-  - `checkAuthorization(completion:)` - Checks camera authorization
-  - `setupCaptureSession()` - Sets up the capture session
-  - `switchCamera()` - Switches between front and back camera
-  - `setFlashMode(_:)` - Sets the flash mode
-  - `capturePhoto(completion:)` - Captures a photo
-- **Important Implementation Details**:
-  - Initializes camera session on background thread
-  - Handles camera device selection
-  - Configures photo output
-  - Implements `AVCapturePhotoCaptureDelegate` for photo capture
-
-#### PhotoPicker (`Features/Photos/PhotoPicker.swift`)
-- **Purpose**: Interface for selecting photos from the photo library
-- **Key Parameters**:
-  - `selectedChallenge: Challenge?` - Challenge to associate with the photo
-  - `selectedAngle: Binding<PhotoAngle>` - Angle being captured
-  - `onPhotoSelected: (UIImage) -> Void` - Callback when a photo is selected
-- **Key State Variables**:
-  - `@State private var selectedItem: PhotosPickerItem?` - Selected photo item
-  - `@State private var selectedImage: UIImage?` - Selected image
-- **Key Methods**:
-  - `loadTransferable(from:)` - Loads the selected image
-- **UI Components**:
-  - Angle selector
-  - Photo picker
-  - Selected image preview
-  - Action buttons
-
-#### PhotoDetailView (`Features/Photos/PhotoDetailView.swift`)
-- **Purpose**: Detailed view for a single photo
-- **Key Parameters**:
-  - `photo: ProgressPhoto` - The photo to display
-  - `photoService: ProgressPhotoService` - Service for photo operations
-- **Key State Variables**:
-  - `@State private var image: UIImage?` - The loaded image
-  - `@State private var isBlurred: Bool` - Whether the image is blurred
-  - `@State private var notes: String` - Notes for the photo
-- **Key Methods**:
-  - `loadImage()` - Loads the photo image
-  - `saveChanges()` - Saves changes to the photo
-  - `deletePhoto()` - Deletes the photo
-- **UI Components**:
-  - Photo display
-  - Metadata display (date, angle, challenge)
-  - Notes editor
-  - Privacy toggle
-  - Action buttons (share, delete)
-- **Important Implementation Details**:
-  - Initializes state from photo properties
-  - Saves changes in `saveChanges()` method
-  - Called when "Save" button is tapped or when dismissing the view
-
-## UI Components
-
-### CTButton (`UI/Components/CTButton.swift`)
-- **Purpose**: Reusable button component with customizable appearance
-- **Key Parameters**:
-  - `title: String` - Button title
-  - `icon: String?` - Optional icon name
-  - `style: CTButtonStyle` - Button style
-  - `size: CTButtonSize` - Button size
-  - `action: () -> Void` - Callback when button is tapped
-- **Styles**:
-  - `.primary` - Primary action button
-  - `.secondary` - Secondary action button
-  - `.tertiary` - Tertiary action button
-  - `.success` - Success action button
-  - `.danger` - Danger action button
-  - `.glass` - Glass-style button
-  - `.regularMaterial`, `.thinMaterial`, `.ultraThinMaterial` - Material-style buttons
-- **Recent Changes**:
-  - Updated all button styles to use a glass design with appropriate opacity
-  - Applied ultraThinMaterial background to all buttons for consistent glass effect
-
-### CTChallengeCard (`UI/Components/CTCard.swift`)
-- **Purpose**: Card component for displaying challenge information
-- **Key Parameters**:
-  - `title: String` - Challenge title
-  - `description: String` - Challenge description
-  - `progress: Double` - Challenge progress
-  - `image: String?` - Optional image name
-  - `style: CTCardStyle` - Card style
-  - `onTap: () -> Void` - Callback when card is tapped
-- **UI Components**:
-  - Header with image (if available)
-  - Title and description
-  - Progress indicator
-- **Important Implementation Details**:
-  - Uses `CTCard` as base component
-  - Displays progress differently based on whether image is present
-
-### CTProgressChart (`UI/Components/CTProgressChart.swift`)
-- **Purpose**: Custom chart component for visualizing progress
-- **Key Parameters**:
-  - `data: [ProgressDataPoint]` - Data points for the chart
-  - `chartType: ChartType` - Type of chart to display
-  - `title: String` - Chart title
-  - `subtitle: String?` - Optional subtitle
-  - `showLegend: Bool` - Whether to show the legend
-- **Chart Types**:
-  - `.bar` - Bar chart for daily values
-  - `.line` - Line chart for trends
-  - `.area` - Area chart for cumulative data
-  - `.pie` - Pie chart for category distribution
-  - `.progress` - Circular progress indicator
-- **Color Implementation**:
-  - Uses `DesignSystem.Colors` for consistent app-wide theming
-  - Implements dynamic gradients based on chart type and data values
-  - Supports both light and dark mode with appropriate color adjustments
-  - Uses neon accent colors for highlighting important data points
-- **Recent Changes**:
-  - Replaced hardcoded colors with DesignSystem color references
-  - Enhanced visual appeal with futuristic glass UI design
-  - Improved gradient implementations for better data visualization
-  - Optimized for consistency with the app's overall design language
-
-### MainTabView (`App/MainTabView.swift`)
-- **Purpose**: Main tab view for the app
-- **Tabs**:
-  - Today - Shows daily tasks and active challenges
-  - Challenges - Shows and manages challenges
-  - Progress - Shows progress tracking
-  - Photos - Shows and manages progress photos
-  - Settings - Shows app settings
-- **Recent Changes**:
-  - Updated tab bar to use glass design with blur effect
-  - Customized tab bar appearance for normal and selected states
-  - Applied consistent design language across the app
-
-## Settings and Logging
-
-### SettingsView (`Features/Settings/SettingsView.swift`)
-- **Purpose**: Shows app settings
-- **Sections**:
-  - Profile - User profile information
-  - Appearance - App appearance settings
-  - Notifications - Notification settings
-  - Logging - Log viewing and detailed logging toggle
-  - About - App information and privacy policy
-- **Recent Changes**:
-  - Added Logging section with View Logs link and Detailed Logging toggle
-  - Applied glass design to all settings sections
-
-### LogViewerView (`Features/Settings/SettingsView.swift`)
-- **Purpose**: Shows app logs
-- **Features**:
-  - Filtering logs by category and level
-  - Searching logs
-  - Sharing logs
-- **Recent Changes**:
-  - Applied glass design to log viewer
-  - Enhanced visual hierarchy with styled section headers
-
-## Photo Angle Icons
-
-### PhotoAngle Icons (`Core/Models/ProgressPhoto.swift`)
-- **Purpose**: Icons for different photo angles
-- **Icons**:
-  - Front: "figure.stand" - Standing figure icon
-  - Left Side: "figure.walk.motion" - Walking figure in motion
-  - Right Side: "figure.walk" - Walking figure
-  - Back: "figure.stand.line.dotted.figure.stand" - Two figures standing
-- **Recent Changes**:
-  - Updated icons to use more appropriate figure-based icons instead of generic person icons
-
-## Recent Changes
-
-### UI Improvements
-- Applied glass design to all buttons for consistent appearance
-- Updated tab bar to use glass design with blur effect
-- Fixed cancel button in challenge detail sheet
-- Updated photo angle icons to be more appropriate
-- Added logging section to settings view
-- Improved ChallengeDetailView with custom navigation bar and consistent styling
-- Enhanced challenge detail presentation with overlay approach for better reliability
-- Updated chart components with futuristic glass UI design that aligns with app theme
-- Improved progress visualization with theme-consistent color gradients
-- Enhanced ChallengeAnalyticsView with app theme colors for better visual consistency
-- Optimized CTProgressChart component to use DesignSystem colors instead of hardcoded values
-
-### Notification System
-- Implemented intelligent notification scheduling based on challenge and task types
-- Created challenge-specific notification patterns for different challenge types
-- Added task-specific notification timing based on task type and scheduled time
-- Implemented milestone notifications for fasting challenges
-- Added support for both repeating daily notifications and one-time event notifications
-
-### Bug Fixes
-- Fixed photo duplication issue by improving duplicate detection
-- Fixed settings display issues
-- Resolved challenge detail loading issues with improved presentation approach
-
-### Documentation Updates
-- Updated PROJECT_DOCUMENTATION.md with recent changes
-- Added information about glass UI design
-- Added details about photo angle icons
-- Added information about tab bar styling
-- Added comprehensive documentation of the notification system
-
-#### ChallengeAnalyticsView (`Features/Challenges/ChallengeAnalyticsView.swift`)
-- **Purpose**: Provides detailed analytics and insights for a specific challenge
-- **Key Parameters**:
-  - `challenge: Challenge` - The challenge to analyze
-- **UI Sections**:
-  - Challenge summary with completion percentage
-  - Consistency score with visual indicator
-  - Daily task completion chart
-  - Streak information
-  - Detailed statistics
-- **Key Features**:
-  - Dynamic consistency score calculation based on task completion
-  - Visual representation of daily task completion patterns
-  - Streak tracking with current and best streak display
-  - Detailed statistics on task completion rates
-- **Color Implementation**:
-  - Uses `DesignSystem.Colors` for consistent theming
-  - Implements dynamic gradients for consistency score visualization:
-    - Low scores (< 40%): Accent to neonOrange gradient
-    - Medium scores (40-70%): neonOrange to neonGreen gradient
-    - High scores (≥ 70%): neonGreen to primaryAction gradient
-- **Recent Changes**:
-  - Replaced hardcoded colors with DesignSystem color references
-  - Enhanced visual appeal with futuristic glass UI design
-  - Removed unnecessary legends for cleaner visualization
-  - Improved gradient implementations for better data representation
-
-## Core Features
-
-### Challenge Management
-Users can create, edit, and manage challenges with customizable:
-- Duration (start and end dates)
-- Task types and frequencies
-- Progress tracking metrics
-
-### Daily Task Tracking
-- Daily view of tasks that need to be completed
-- Task completion tracking with status updates
-- Streak tracking for consistent task completion
-
-### Progress Analytics
-- Visual representations of progress over time
-- Detailed analytics for each challenge
-- Consistency scoring and performance metrics
-
-### Photo Capture
-- Ability to capture and store photos related to challenges
-- Photo gallery view for reviewing progress visually
-- Photo detail view with metadata and notes
-
-## Technical Implementation
-
-### SwiftData Integration
-- Uses SwiftData for persistent storage of challenges, tasks, and photos
-- Implements proper relationships between models
-- Handles data migrations and schema updates
-
-### Notification System
-- Local notifications for task reminders
-- Customizable notification settings
-- Background scheduling of notifications
-
-### Design System
-- Consistent color palette and typography
-- Reusable UI components
-- Accessibility considerations
+### Security
+- Securely store sensitive user data
+- Implement proper error handling
+- Validate user input
+- Protect photo data
 
 ## Future Enhancements
+
+### Planned Features
 - Social sharing capabilities
 - Cloud sync across devices
 - Advanced analytics and insights
 - Gamification elements
 - AI-powered recommendations
+- Custom workout features
+- Goal setting framework
+- Advanced tracking with device integration
 
-## Development Guidelines
-- Follow Swift style guide and naming conventions
-- Use SwiftUI best practices for view composition
-- Implement proper error handling and logging
-- Write unit tests for core functionality
-- Document public APIs and complex logic
-
-## Data Models
-
-### Challenge (`Core/Models/Challenge.swift`)
-- **Properties**:
-  - `id: UUID` - Unique identifier
-  - `name: String` - Challenge name
-  - `type: ChallengeType` - Type of challenge (fitness, nutrition, etc.)
-  - `status: ChallengeStatus` - Current status (inProgress, completed, failed)
-  - `startDate: Date?` - When the challenge started
-  - `endDate: Date?` - Target completion date
-  - `durationInDays: Int` - Total days for the challenge
-  - `tasks: [Task]` - Associated tasks
-  - `progressPhotos: [ProgressPhoto]` - Photos documenting progress
-  - `imageName: String?` - Name of the image for the challenge
-- **Computed Properties**:
-  - `progress: Double` - Completion percentage (0.0-1.0)
-  - `currentDay: Int` - Current day in the challenge
-- **Relationships**:
-  - One-to-many with Task
-  - One-to-many with ProgressPhoto
-
-### Task (`Core/Models/Task.swift`)
-- **Properties**:
-  - `id: UUID` - Unique identifier
-  - `name: String` - Task name
-  - `taskDescription: String` - Description of the task
-  - `type: TaskType` - Type of task
-  - `frequency: TaskFrequency` - How often the task repeats
-  - `timeOfDayMinutes: Int?` - Time of day in minutes from midnight
-  - `durationMinutes: Int?` - Duration in minutes
-  - `targetValue: Double?` - Target value (e.g., pages to read)
-  - `targetUnit: String?` - Unit for target value
-  - `scheduledTime: Date?` - When the task should be performed
-  - `challenge: Challenge?` - Associated challenge
-  - `isCompleted: Bool` - Whether the task is completed
-- **Relationships**:
-  - Many-to-one with Challenge
-  - One-to-many with DailyTask
-
-### DailyTask (`Core/Models/DailyTask.swift`)
-- **Properties**:
-  - `id: UUID` - Unique identifier
-  - `title: String` - Task title
-  - `date: Date` - Date for this instance
-  - `isCompleted: Bool` - Whether the task is completed
-  - `status: TaskCompletionStatus` - Status (notStarted, inProgress, completed, missed, failed)
-  - `task: Task?` - Associated task
-  - `challenge: Challenge?` - Associated challenge
-  - `notes: String?` - Notes for this daily task
-  - `actualValue: Double?` - Actual value achieved
-  - `completionTime: Date?` - When the task was completed
-- **Methods**:
-  - `complete(actualValue:notes:)` - Marks task as completed
-  - `markInProgress(notes:)` - Marks task as in progress
-  - `markMissed(notes:)` - Marks task as missed
-  - `markFailed(notes:)` - Marks task as failed
-  - `reset()` - Resets task to not started
-- **Relationships**:
-  - Many-to-one with Task
-  - Many-to-one with Challenge
-
-### ProgressPhoto (`Core/Models/ProgressPhoto.swift`)
-- **Properties**:
-  - `id: UUID` - Unique identifier
-  - `challenge: Challenge?` - Associated challenge
-  - `date: Date` - When the photo was taken
-  - `angle: PhotoAngle` - Angle of the photo (front, leftSide, rightSide, back)
-  - `fileURL: URL` - File location
-  - `notes: String?` - Optional notes
-  - `isBlurred: Bool` - Whether the photo is blurred for privacy
-  - `createdAt: Date` - Creation date
-  - `updatedAt: Date` - Last update date
-- **Relationships**:
-  - Many-to-one with Challenge
-
-### PhotoAngle (enum in `Core/Models/ProgressPhoto.swift`)
-- **Cases**:
-  - `front` - Front view
-  - `leftSide` - Left side view
-  - `rightSide` - Right side view
-  - `back` - Back view
-- **Properties**:
-  - `description: String` - Human-readable description
-  - `icon: String` - System icon name (updated to use more appropriate figure-based icons)
-
-### ProgressPhotoService (class in `Core/Models/ProgressPhoto.swift`)
-- **Key Methods**:
-  - `savePhoto(image:challengeId:angle:) -> URL?` - Saves a photo to the app's storage
-  - `loadPhoto(from:) -> UIImage?` - Loads a photo from storage
-  - `deletePhoto(at:) -> Bool` - Deletes a photo from storage
-  - `blurPhoto(image:radius:) -> UIImage?` - Applies a blur effect for privacy
-  - `savePhotoToLibrary(image:completion:)` - Saves a photo to the user's photo library
-
-## Feature Modules
-
-### Challenges Module
-
-#### ChallengesView (`Features/Challenges/ChallengesView.swift`)
-- **Purpose**: Main view for managing challenges
-- **Key State Variables**:
-  - `@Query private var challenges: [Challenge]` - All challenges
-  - `@State private var activeChallenges: [Challenge]` - Currently active challenges
-  - `@State private var showingAddChallenge: Bool` - Controls new challenge sheet
-  - `@State private var selectedCategory: ChallengeCategory` - Selected category filter
-- **Key Methods**:
-  - `stopChallenge(name: String, type: ChallengeType)` - Stops a challenge by name and type
-  - `isChallengeActive(name: String, type: ChallengeType) -> Bool` - Checks if a challenge is active
-  - `createChallenge(...)` - Creates a new challenge
-  - `filterChallenges()` - Filters challenges based on status and category
-- **UI Sections**:
-  - Active challenges section
-  - Upcoming challenges section
-  - Completed challenges section
-  - Challenge selection view
-  - Empty state view
-
-#### ChallengeDetailView (`Features/Challenges/ChallengeDetailView.swift`)
-- **Purpose**: Shows details for a specific challenge
-- **Key Parameters**:
-  - `challenge: Challenge` - The challenge to display
-- **UI Sections**:
-  - Custom navigation bar with challenge name and done button
-  - Challenge info header with progress ring
-  - Tab-based interface (Overview, Tasks, Analytics)
-  - Task cards with icons and descriptions
-- **Recent Changes**:
-  - Updated to use custom navigation bar instead of standard navigation
-  - Applied glass design to match app's visual style
-  - Improved tab selector with better visual feedback
-  - Enhanced layout with proper spacing and padding
-
-#### ChallengeDetailSheet (`Features/Challenges/ChallengesView.swift`)
-- **Purpose**: Shows details for a challenge before starting it
-- **Key Parameters**:
-  - `challenge: Challenge` - The challenge to display
-  - `onStart: () -> Void` - Callback when starting the challenge
-- **UI Sections**:
-  - Challenge header
-  - Challenge description
-  - Daily tasks
-  - Benefits
-  - Action button
-- **Recent Changes**:
-  - Updated navigation bar to use "Done" button instead of "Cancel" for consistency
-  - Improved presentation with overlay instead of sheet for better reliability
-
-### Daily Tasks Module
-
-#### TodayView (`Features/DailyTasks/TodayView.swift`)
-- **Purpose**: Shows and manages tasks for the current day
-- **Key State Variables**:
-  - `@Query private var allChallenges: [Challenge]` - All challenges
-  - `@Query private var allDailyTasks: [DailyTask]` - All daily tasks
-  - `@State private var activeSheet: SheetType?` - Controls which sheet is shown
-  - `@State private var tasksManager: DailyTasksManager?` - Manager for daily tasks
-- **Key Computed Properties**:
-  - `dailyTasks: [DailyTask]` - Tasks for today
-  - `sortedDailyTasks: [DailyTask]` - Sorted tasks for today
-  - `activeChallenges: [Challenge]` - Currently active challenges
-- **Key Methods**:
-  - `completeTask(dailyTask:)` - Marks a task as completed
-  - `missTask(dailyTask:)` - Marks a task as missed
-  - `resetTask(dailyTask:)` - Resets a task to pending
-- **UI Sections**:
-  - Header with date and greeting
-  - Daily progress summary
-  - Active challenges section
-  - Today's tasks section
-  - Empty state view
-
-#### TaskDetailView (`Features/DailyTasks/TodayView.swift`)
-- **Purpose**: Shows details for a specific daily task
-- **Key Parameters**:
-  - `task: DailyTask` - The task to display
-  - `tasksManager: DailyTasksManager?` - Manager for daily tasks
-- **Key State Variables**:
-  - `@State private var notes: String` - Notes for the task
-  - `@State private var actualValue: String` - Actual value achieved
-  - `@State private var selectedStatus: TaskCompletionStatus?` - Selected status
-- **Key Methods**:
-  - `saveNotes()` - Saves notes to the task
-  - `updateTaskStatus()` - Updates the task status
-- **UI Sections**:
-  - Task header
-  - Task details
-  - Task status
-  - Notes section
-  - Action buttons
-
-#### DailyTasksManager (`Features/DailyTasks/DailyTasksManager.swift`)
-- **Purpose**: Manages the creation and updating of daily tasks
-- **Key Methods**:
-  - `createDailyTasksIfNeeded()` - Creates daily tasks for active challenges
-  - `createDailyTask(for:on:)` - Creates a daily task for a specific task and date
-  - `completeTask(_:actualValue:notes:)` - Marks a task as completed
-  - `markTaskInProgress(_:notes:)` - Marks a task as in progress
-  - `markTaskMissed(_:notes:)` - Marks a task as missed
-  - `markTaskFailed(_:notes:)` - Marks a task as failed
-  - `resetTask(_:)` - Resets a task to not started
-  - `updateChallengeProgress(for:)` - Updates challenge progress
-
-### Notification System
-
-#### NotificationManager (`Core/Services/NotificationManager.swift`)
-- **Purpose**: Manages app notifications with intelligent scheduling based on challenge and task types
-- **Key Properties**:
-  - `@Published var isAuthorized: Bool` - Whether notifications are authorized
-- **Key Methods**:
-  - `requestAuthorization()` - Requests notification permission from the user
-  - `scheduleNotificationsForChallenge(_ challenge: Challenge)` - Schedules notifications for a challenge
-  - `removeNotificationsForChallenge(_ challenge: Challenge)` - Removes notifications for a challenge
-- **Challenge-Specific Notification Logic**:
-  - **75 Hard Challenge**:
-    - Morning workout reminder at 6:00 AM
-    - Evening workout reminder at 5:00 PM
-    - Water reminders every 2 hours from 8 AM to 8 PM
-    - Reading reminder at 9:00 PM
-    - Progress photo reminder at 8:00 AM
-  - **Water Fasting Challenge**:
-    - Hydration reminders every hour from 8 AM to 8 PM
-    - Fasting milestone notifications at key intervals (12h, 16h, 20h, 24h, 36h, 48h, 60h, 72h)
-    - Weight tracking reminder at 7:00 AM
-  - **Habit Builder Challenge**:
-    - Morning habit reminder at 7:30 AM
-    - Midday check-in at 12:30 PM
-    - Evening habit reminder at 7:00 PM
-    - Daily reflection reminder at 9:00 PM
-  - **Custom Challenges**:
-    - Notifications scheduled based on task types and scheduled times
-- **Task-Specific Notification Logic**:
-  - **Workout Tasks**: Scheduled at task's time or defaults to 6 AM/5 PM
-  - **Water Tasks**: Reminders every 2 hours from 8 AM to 8 PM
-  - **Reading Tasks**: Evening reminder at 9:00 PM
-  - **Nutrition Tasks**: Meal reminders at 7 AM (breakfast), 12 PM (lunch), 6 PM (dinner)
-  - **Fasting Tasks**: Start and end reminders based on fasting window
-  - **Habit Tasks**: Morning (7:30 AM), midday (12:30 PM), and evening (7:00 PM) reminders
-  - **Weight Tasks**: Morning reminder at 7:00 AM
-  - **Photo Tasks**: Morning reminder at 8:00 AM
-  - **Meditation Tasks**: Morning reminder at 7:00 AM or at scheduled time
-  - **Sleep Tasks**: Bedtime reminder at 10:00 PM
-  - **Custom Tasks**: Scheduled at task's time or defaults to noon
-
-### Progress Module
-
-#### ProgressTrackingView (`Features/Progress/ProgressTrackingView.swift`)
-- **Purpose**: Shows progress for active challenges
-- **Key State Variables**:
-  - `@Query(sort: \Challenge.startDate) private var challenges: [Challenge]` - All challenges
-  - `@Query(sort: \DailyTask.date) private var dailyTasks: [DailyTask]` - All daily tasks
-  - `@State private var selectedTimeFrame: TimeFrame` - Selected time frame
-- **Key Computed Properties**:
-  - `activeChallenge: Challenge?` - Returns the first active challenge
-- **Key Methods**:
-  - `getCurrentStreak() -> Int` - Calculates current streak
-  - `getBestStreak() -> Int` - Calculates best streak historically
-  - `getTrendData() -> [ProgressDataPoint]` - Generates trend chart data
-  - `getChartData() -> [(date: Date, completed: Int, missed: Int)]` - Generates task completion data
-  - `getTaskCompletionStats(for: Challenge) -> (completed: Int, total: Int, completionRate: Double)` - Gets task completion stats
-- **UI Components**:
-  - Time frame selector
-  - Challenge progress summary
-  - Overall progress summary
-  - Task completion chart
-  - Trend chart
-  - Streak tracking card
-
-### Photos Module
-
-#### PhotosView (`Features/Photos/PhotosView.swift`)
-- **Purpose**: Shows and manages progress photos
-- **Key State Variables**:
-  - `@Query private var photos: [ProgressPhoto]` - All progress photos
-  - `@State private var selectedChallenge: Challenge?` - Selected challenge for filtering
-  - `@State private var selectedAngle: PhotoAngle = .front` - Selected photo angle
-  - `@State private var showingPhotoSessionSheet = false` - Controls photo session sheet
-- **Key Methods**:
-  - `hasPhotoForToday(angle: PhotoAngle) -> Bool` - Checks if there's a photo for today for a specific angle
-  - `savePhoto(image: UIImage)` - Saves a photo to the database (updated to fix duplication issue)
-- **UI Components**:
-  - Challenge selector
-  - Photo capture section
-  - Photo gallery
-  - Comparison tools section
-- **Recent Changes**:
-  - Fixed photo duplication issue by improving duplicate detection logic
-  - Updated to replace existing photos for the same day and angle instead of creating duplicates
-
-#### PhotoSessionView (`Features/Photos/PhotoSessionView.swift`)
-- **Purpose**: Guides the user through capturing photos from all 4 angles
-- **Key State Variables**:
-  - `@State private var currentAngleIndex = 0` - Current angle being captured
-  - `@State private var capturedImages: [PhotoAngle: UIImage] = [:]` - Captured images for each angle
-  - `@State private var showingCameraView = false` - Controls camera view
-  - `@State private var showingPhotoLibrary = false` - Controls photo library picker
-- **Key Methods**:
-  - `getInstructionsForAngle(_ angle: PhotoAngle) -> String` - Gets instructions for a specific angle
-  - `saveAllPhotos()` - Saves all captured photos to the database
-- **UI Components**:
-  - Progress indicator
-  - Angle instructions
-  - Image preview
-  - Capture buttons
-  - Navigation buttons
-- **Important Implementation Details**:
-  - Creates a binding for `currentAngle` to pass to `CameraView` and `PhotoPicker`
-  - Uses a sheet to present `CameraView` and `PhotoPicker`
-
-#### CameraView (`Features/Photos/CameraView.swift`)
-- **Purpose**: Custom camera interface for taking progress photos
-- **Key Parameters**:
-  - `selectedChallenge: Challenge?` - Challenge to associate with the photo
-  - `selectedAngle: Binding<PhotoAngle>` - Angle being captured
-  - `onPhotoTaken: (UIImage) -> Void` - Callback when a photo is taken
-- **Key State Variables**:
-  - `@StateObject private var cameraController = CameraController()` - Controller for camera operations
-  - `@State private var showingCameraPermissionAlert = false` - Controls camera permission alert
-  - `@State private var showingCountdown = false` - Controls countdown timer
-  - `@State private var countdown = 3` - Countdown value
-  - `@State private var flashMode: AVCaptureDevice.FlashMode = .off` - Flash mode
-  - `@State private var isFrontCamera = false` - Whether front camera is active
-  - `@State private var cameraInitialized = false` - Whether camera is initialized
-- **Key Methods**:
-  - `toggleFlash()` - Toggles flash mode
-  - `startCountdown()` - Starts countdown timer
-  - `capturePhoto()` - Captures a photo
-  - `silhouetteShape(for:in:) -> some Shape` - Creates silhouette shape for positioning
-- **UI Components**:
-  - Camera preview
-  - Silhouette overlay
-  - Camera controls (close, flash, capture, timer, switch camera)
-  - Angle indicator
-- **Important Implementation Details**:
-  - Uses `AVFoundation` for camera access
-  - Initializes camera in `onAppear`
-  - Handles camera permissions
-  - Provides visual guidance with silhouette overlay
-
-#### CameraController (class in `Features/Photos/CameraView.swift`)
-- **Purpose**: Manages camera operations
-- **Key Properties**:
-  - `captureSession: AVCaptureSession` - Session for capturing photos
-  - `previewLayer: AVCaptureVideoPreviewLayer` - Layer for displaying camera preview
-- **Key Methods**:
-  - `checkAuthorization(completion:)` - Checks camera authorization
-  - `setupCaptureSession()` - Sets up the capture session
-  - `switchCamera()` - Switches between front and back camera
-  - `setFlashMode(_:)` - Sets the flash mode
-  - `capturePhoto(completion:)` - Captures a photo
-- **Important Implementation Details**:
-  - Initializes camera session on background thread
-  - Handles camera device selection
-  - Configures photo output
-  - Implements `AVCapturePhotoCaptureDelegate` for photo capture
-
-#### PhotoPicker (`Features/Photos/PhotoPicker.swift`)
-- **Purpose**: Interface for selecting photos from the photo library
-- **Key Parameters**:
-  - `selectedChallenge: Challenge?` - Challenge to associate with the photo
-  - `selectedAngle: Binding<PhotoAngle>` - Angle being captured
-  - `onPhotoSelected: (UIImage) -> Void` - Callback when a photo is selected
-- **Key State Variables**:
-  - `@State private var selectedItem: PhotosPickerItem?` - Selected photo item
-  - `@State private var selectedImage: UIImage?` - Selected image
-- **Key Methods**:
-  - `loadTransferable(from:)` - Loads the selected image
-- **UI Components**:
-  - Angle selector
-  - Photo picker
-  - Selected image preview
-  - Action buttons
-
-#### PhotoDetailView (`Features/Photos/PhotoDetailView.swift`)
-- **Purpose**: Detailed view for a single photo
-- **Key Parameters**:
-  - `photo: ProgressPhoto` - The photo to display
-  - `photoService: ProgressPhotoService` - Service for photo operations
-- **Key State Variables**:
-  - `@State private var image: UIImage?` - The loaded image
-  - `@State private var isBlurred: Bool` - Whether the image is blurred
-  - `@State private var notes: String` - Notes for the photo
-- **Key Methods**:
-  - `loadImage()` - Loads the photo image
-  - `saveChanges()` - Saves changes to the photo
-  - `deletePhoto()` - Deletes the photo
-- **UI Components**:
-  - Photo display
-  - Metadata display (date, angle, challenge)
-  - Notes editor
-  - Privacy toggle
-  - Action buttons (share, delete)
-- **Important Implementation Details**:
-  - Initializes state from photo properties
-  - Saves changes in `saveChanges()` method
-  - Called when "Save" button is tapped or when dismissing the view
-
-## UI Components
-
-### CTButton (`UI/Components/CTButton.swift`)
-- **Purpose**: Reusable button component with customizable appearance
-- **Key Parameters**:
-  - `title: String` - Button title
-  - `icon: String?` - Optional icon name
-  - `style: CTButtonStyle` - Button style
-  - `size: CTButtonSize` - Button size
-  - `action: () -> Void` - Callback when button is tapped
-- **Styles**:
-  - `.primary` - Primary action button
-  - `.secondary` - Secondary action button
-  - `.tertiary` - Tertiary action button
-  - `.success` - Success action button
-  - `.danger` - Danger action button
-  - `.glass` - Glass-style button
-  - `.regularMaterial`, `.thinMaterial`, `.ultraThinMaterial` - Material-style buttons
-- **Recent Changes**:
-  - Updated all button styles to use a glass design with appropriate opacity
-  - Applied ultraThinMaterial background to all buttons for consistent glass effect
-
-### CTChallengeCard (`UI/Components/CTCard.swift`)
-- **Purpose**: Card component for displaying challenge information
-- **Key Parameters**:
-  - `title: String` - Challenge title
-  - `description: String` - Challenge description
-  - `progress: Double` - Challenge progress
-  - `image: String?` - Optional image name
-  - `style: CTCardStyle` - Card style
-  - `onTap: () -> Void` - Callback when card is tapped
-- **UI Components**:
-  - Header with image (if available)
-  - Title and description
-  - Progress indicator
-- **Important Implementation Details**:
-  - Uses `CTCard` as base component
-  - Displays progress differently based on whether image is present
-
-### CTProgressChart (`UI/Components/CTProgressChart.swift`)
-- **Purpose**: Custom chart component for visualizing progress
-- **Key Parameters**:
-  - `data: [ProgressDataPoint]` - Data points for the chart
-  - `chartType: ChartType` - Type of chart to display
-  - `title: String` - Chart title
-  - `subtitle: String?` - Optional subtitle
-  - `showLegend: Bool` - Whether to show the legend
-- **Chart Types**:
-  - `.bar` - Bar chart for daily values
-  - `.line` - Line chart for trends
-  - `.area` - Area chart for cumulative data
-  - `.pie` - Pie chart for category distribution
-  - `.progress` - Circular progress indicator
-- **Color Implementation**:
-  - Uses `DesignSystem.Colors` for consistent app-wide theming
-  - Implements dynamic gradients based on chart type and data values
-  - Supports both light and dark mode with appropriate color adjustments
-  - Uses neon accent colors for highlighting important data points
-- **Recent Changes**:
-  - Replaced hardcoded colors with DesignSystem color references
-  - Enhanced visual appeal with futuristic glass UI design
-  - Improved gradient implementations for better data visualization
-  - Optimized for consistency with the app's overall design language
-
-### MainTabView (`App/MainTabView.swift`)
-- **Purpose**: Main tab view for the app
-- **Tabs**:
-  - Today - Shows daily tasks and active challenges
-  - Challenges - Shows and manages challenges
-  - Progress - Shows progress tracking
-  - Photos - Shows and manages progress photos
-  - Settings - Shows app settings
-- **Recent Changes**:
-  - Updated tab bar to use glass design with blur effect
-  - Customized tab bar appearance for normal and selected states
-  - Applied consistent design language across the app
-
-## Settings and Logging
-
-### SettingsView (`Features/Settings/SettingsView.swift`)
-- **Purpose**: Shows app settings
-- **Sections**:
-  - Profile - User profile information
-  - Appearance - App appearance settings
-  - Notifications - Notification settings
-  - Logging - Log viewing and detailed logging toggle
-  - About - App information and privacy policy
-- **Recent Changes**:
-  - Added Logging section with View Logs link and Detailed Logging toggle
-  - Applied glass design to all settings sections
-
-### LogViewerView (`Features/Settings/SettingsView.swift`)
-- **Purpose**: Shows app logs
-- **Features**:
-  - Filtering logs by category and level
-  - Searching logs
-  - Sharing logs
-- **Recent Changes**:
-  - Applied glass design to log viewer
-  - Enhanced visual hierarchy with styled section headers
-
-## Photo Angle Icons
-
-### PhotoAngle Icons (`Core/Models/ProgressPhoto.swift`)
-- **Purpose**: Icons for different photo angles
-- **Icons**:
-  - Front: "figure.stand" - Standing figure icon
-  - Left Side: "figure.walk.motion" - Walking figure in motion
-  - Right Side: "figure.walk" - Walking figure
-  - Back: "figure.stand.line.dotted.figure.stand" - Two figures standing
-- **Recent Changes**:
-  - Updated icons to use more appropriate figure-based icons instead of generic person icons
-
-## Recent Changes
-
-### UI Improvements
-- Applied glass design to all buttons for consistent appearance
-- Updated tab bar to use glass design with blur effect
-- Fixed cancel button in challenge detail sheet
-- Updated photo angle icons to be more appropriate
-- Added logging section to settings view
-- Improved ChallengeDetailView with custom navigation bar and consistent styling
-- Enhanced challenge detail presentation with overlay approach for better reliability
-- Updated chart components with futuristic glass UI design that aligns with app theme
-- Improved progress visualization with theme-consistent color gradients
-- Enhanced ChallengeAnalyticsView with app theme colors for better visual consistency
-- Optimized CTProgressChart component to use DesignSystem colors instead of hardcoded values
-
-### Notification System
-- Implemented intelligent notification scheduling based on challenge and task types
-- Created challenge-specific notification patterns for different challenge types
-- Added task-specific notification timing based on task type and scheduled time
-- Implemented milestone notifications for fasting challenges
-- Added support for both repeating daily notifications and one-time event notifications
-
-### Bug Fixes
-- Fixed photo duplication issue by improving duplicate detection
-- Fixed settings display issues
-- Resolved challenge detail loading issues with improved presentation approach
-
-### Documentation Updates
-- Updated PROJECT_DOCUMENTATION.md with recent changes
-- Added information about glass UI design
-- Added details about photo angle icons
-- Added information about tab bar styling
-- Added comprehensive documentation of the notification system 
+### Technical Improvements
+- Performance optimizations
+- Enhanced SwiftData implementation
+- Improved image handling
+- Better notification management
+- More comprehensive testing 

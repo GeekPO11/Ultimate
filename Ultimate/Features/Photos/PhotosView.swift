@@ -450,17 +450,22 @@ struct PhotosView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal)
                         
-                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: DesignSystem.Spacing.s) {
-                            ForEach(noChallenge) { photo in
-                                PhotoThumbnail(photo: photo, photoService: photoService)
-                                    .onTapGesture {
-                                        Logger.info("Photo thumbnail tapped (no challenge): \(photo.id)", category: .photos)
-                                        selectedPhoto = photo
-                                        showingPhotoDetail = true
-                                    }
+                        // Use a ScrollView to ensure proper spacing
+                        ScrollView {
+                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: DesignSystem.Spacing.s) {
+                                ForEach(noChallenge) { photo in
+                                    PhotoThumbnail(photo: photo, photoService: photoService)
+                                        .aspectRatio(3/4, contentMode: .fill)
+                                        .onTapGesture {
+                                            Logger.info("Photo thumbnail tapped (no challenge): \(photo.id)", category: .photos)
+                                            selectedPhoto = photo
+                                            showingPhotoDetail = true
+                                        }
+                                }
                             }
+                            .padding(.horizontal)
                         }
-                        .padding(.horizontal)
+                        .frame(height: min(CGFloat(noChallenge.count) * 100, 400))
                     }
                 }
             }
@@ -508,17 +513,22 @@ struct PhotosView: View {
             
             // Show the most recent 4 photos
             let recentPhotos = Array(photos.prefix(4))
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: DesignSystem.Spacing.s) {
-                ForEach(recentPhotos) { photo in
-                    PhotoThumbnail(photo: photo, photoService: photoService)
-                        .onTapGesture {
-                            Logger.info("Photo thumbnail tapped for challenge \(challenge.name): \(photo.id)", category: .photos)
-                            selectedPhoto = photo
-                            showingPhotoDetail = true
-                        }
+            // Use a ScrollView to ensure proper spacing
+            ScrollView {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: DesignSystem.Spacing.s) {
+                    ForEach(recentPhotos) { photo in
+                        PhotoThumbnail(photo: photo, photoService: photoService)
+                            .aspectRatio(3/4, contentMode: .fill)
+                            .onTapGesture {
+                                Logger.info("Photo thumbnail tapped for challenge \(challenge.name): \(photo.id)", category: .photos)
+                                selectedPhoto = photo
+                                showingPhotoDetail = true
+                            }
+                    }
                 }
+                .padding(.horizontal)
             }
-            .padding(.horizontal)
+            .frame(height: min(CGFloat(recentPhotos.count) * 100, 200))
             
             Divider()
                 .padding(.vertical, DesignSystem.Spacing.s)

@@ -53,68 +53,14 @@ struct ChallengesView: View {
                 // Challenge selection view is always shown
                 challengeSelectionView
             }
-            
-            // Overlay the challenge detail view when a challenge is selected
-            if showingChallengeDetail, let challenge = selectedTemplateChallenge {
-                Color.black.opacity(0.5)
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        // Allow tapping outside to dismiss
-                        withAnimation {
-                            showingChallengeDetail = false
-                            selectedTemplateChallenge = nil
-                        }
-                    }
-                
-                VStack(spacing: 0) {
-                    // Navigation bar
-                    HStack {
-                        Text(challenge.name)
-                            .font(DesignSystem.Typography.title2)
-                            .fontWeight(.bold)
-                            .foregroundColor(DesignSystem.Colors.primaryText)
-                        
-                        Spacer()
-                        
-                        Button {
-                            withAnimation {
-                                showingChallengeDetail = false
-                                selectedTemplateChallenge = nil
-                            }
-                        } label: {
-                            Text("Done")
-                                .foregroundColor(DesignSystem.Colors.primaryAction)
-                        }
-                    }
-                    .padding()
-                    .background(DesignSystem.Colors.cardBackground.opacity(0.95))
-                    
-                    // Content
-                    ScrollView {
-                        ChallengeDetailSheet(challenge: challenge, onStart: {
-                            startChallenge(challenge)
-                            withAnimation {
-                                showingChallengeDetail = false
-                                selectedTemplateChallenge = nil
-                            }
-                        })
-                        .padding()
-                    }
-                }
-                .background(DesignSystem.Colors.background)
-                .cornerRadius(16)
-                .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 5)
-                .padding(.vertical, 40)
-                .padding(.horizontal)
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
-                .zIndex(100) // Ensure it's above other content
-            }
         }
         .sheet(isPresented: $showingCustomChallengeView) {
             CustomChallengeView()
         }
         .sheet(item: $selectedChallenge) { challenge in
-            ChallengeDetailView(challenge: challenge)
+            ChallengeDetailSheet(challenge: challenge, onStart: {
+                startChallenge(challenge)
+            })
         }
         .onChange(of: challenges) { _, _ in
             filterChallenges()
@@ -763,24 +709,14 @@ struct ChallengesView: View {
             )
         }
         
-        // First set the selected challenge
-        selectedTemplateChallenge = challengeCopy
-        
-        // Then show the detail view with animation
-        print("ChallengeSelectionView: Showing detail for - \(challengeCopy.name)")
-        print("ChallengeSelectionView: Challenge copy has \(challengeCopy.tasks.count) tasks")
-        
-        withAnimation(.easeInOut(duration: 0.3)) {
-            showingChallengeDetail = true
-        }
+        // Set the selected challenge to display the detail view
+        selectedChallenge = challengeCopy
         
         // Reset loading state
         isLoadingChallenge = false
         
         // Reset the processing flag
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            self.isProcessingTap = false
-        }
+        isProcessingTap = false
     }
     
     // Helper method to create default tasks for a challenge

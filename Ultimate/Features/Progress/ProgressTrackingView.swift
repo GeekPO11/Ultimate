@@ -50,26 +50,49 @@ struct ProgressTrackingView: View {
         case .month:
             startDate = calendar.date(byAdding: .month, value: -1, to: today) ?? today
         case .all:
-            startDate = calendar.date(byAdding: .year, value: -1, to: today) ?? today
+            // For "All", go back to the earliest task date or 1 year, whichever is earlier
+            if let earliestTask = dailyTasks.min(by: { $0.date < $1.date }) {
+                startDate = calendar.startOfDay(for: earliestTask.date)
+            } else {
+                startDate = calendar.date(byAdding: .year, value: -1, to: today) ?? today
+            }
         }
         
+        // Ensure we have data for each day in the range
+        var currentDate = startDate
+        var allDates: [Date] = []
+        
+        while currentDate <= today {
+            allDates.append(currentDate)
+            guard let nextDate = calendar.date(byAdding: .day, value: 1, to: currentDate) else { break }
+            currentDate = nextDate
+        }
+        
+        // Filter tasks within the date range
         let filteredTasks = dailyTasks.filter { $0.date >= startDate && $0.date <= today }
         
         // Group by date and count completed tasks
         var tasksByDate: [Date: PTTaskCompletionData] = [:]
         
+        // Initialize with zero values for all dates in range
+        for date in allDates {
+            tasksByDate[date] = PTTaskCompletionData(
+                date: date,
+                completed: 0,
+                total: 0
+            )
+        }
+        
+        // Fill in actual data
         for task in filteredTasks {
             let dateKey = calendar.startOfDay(for: task.date)
             
-            if tasksByDate[dateKey] == nil {
-                tasksByDate[dateKey] = PTTaskCompletionData(
-                    date: dateKey,
-                    completed: 0,
-                    total: 0
-                )
-            }
+            var data = tasksByDate[dateKey] ?? PTTaskCompletionData(
+                date: dateKey,
+                completed: 0,
+                total: 0
+            )
             
-            var data = tasksByDate[dateKey]!
             data.total += 1
             
             if task.status == .completed {
@@ -140,8 +163,12 @@ struct ProgressTrackingView: View {
                     if let activeChallenge = activeChallenge {
                         challengeProgressSummary(for: activeChallenge)
                             .onTapGesture {
+                                // Pre-load the challenge for analytics before showing the sheet
                                 challengeForAnalytics = activeChallenge
-                                showingAnalytics = true
+                                // Small delay to ensure data is ready
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                    showingAnalytics = true
+                                }
                             }
                     } else {
                         overallProgressSummary
@@ -163,7 +190,15 @@ struct ProgressTrackingView: View {
             .sheet(isPresented: $showingAnalytics) {
                 if let challenge = challengeForAnalytics {
                     ChallengeAnalyticsView(challenge: challenge)
+                        .onAppear {
+                            // Force refresh of the analytics view when it appears
+                            print("Analytics view appeared for challenge: \(challenge.name)")
+                        }
                 }
+            }
+            .onChange(of: selectedTimeFrame) { _, _ in
+                // Force refresh when time frame changes
+                print("Time frame changed to: \(selectedTimeFrame.rawValue)")
             }
         }
     }

@@ -14,56 +14,51 @@ struct ChallengeDetailView: View {
     
     // MARK: - Body
     var body: some View {
-        ZStack {
-            // Premium animated background
-            PremiumBackground()
-            
-            VStack(spacing: 0) {
-                // Custom navigation bar
-                HStack {
-                    Text(challenge.name)
-                        .font(DesignSystem.Typography.title2)
-                        .fontWeight(.bold)
-                        .foregroundColor(DesignSystem.Colors.primaryText)
-                    
-                    Spacer()
-                    
-                    if challenge.status == .inProgress {
-                        Button(action: {
-                            showingStopConfirmation = true
-                        }) {
-                            Image(systemName: "stop.circle")
-                                .foregroundColor(Color.red)
-                                .font(.system(size: 20))
-                        }
-                        .padding(.trailing, 8)
-                    }
-                    
-                    Button("Done") {
-                        dismiss()
-                    }
-                    .foregroundColor(DesignSystem.Colors.primaryAction)
-                }
-                .padding()
-                .background(DesignSystem.Colors.cardBackground.opacity(0.95))
+        NavigationView {
+            ZStack {
+                // Premium animated background
+                PremiumBackground()
                 
-                // Content
-                ScrollView {
-                    VStack(spacing: DesignSystem.Spacing.l) {
-                        // Challenge header
-                        challengeHeaderView
-                        
-                        // Tab selector
-                        tabSelector
-                        
-                        // Tab content
-                        tabContent
+                VStack(spacing: 0) {
+                    // Content
+                    ScrollView {
+                        VStack(spacing: DesignSystem.Spacing.l) {
+                            // Challenge header
+                            challengeHeaderView
+                            
+                            // Tab selector
+                            tabSelector
+                            
+                            // Tab content
+                            tabContent
+                        }
+                        .padding()
                     }
-                    .padding()
+                }
+                .background(DesignSystem.Colors.background)
+                .navigationTitle(challenge.name)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        if challenge.status == .inProgress {
+                            Button(action: {
+                                showingStopConfirmation = true
+                            }) {
+                                Image(systemName: "stop.circle")
+                                    .foregroundColor(Color.red)
+                                    .font(.system(size: 20))
+                            }
+                        }
+                    }
+                    
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Done") {
+                            dismiss()
+                        }
+                    }
                 }
             }
-            .background(DesignSystem.Colors.background)
-            .cornerRadius(16)
+            .ignoresSafeArea(.all, edges: .bottom)
         }
         .alert("Stop Challenge", isPresented: $showingStopConfirmation) {
             Button("Cancel", role: .cancel) { }
@@ -279,13 +274,56 @@ struct ChallengeDetailView: View {
                         .font(DesignSystem.Typography.body)
                         .foregroundColor(DesignSystem.Colors.secondaryText)
                     
-                    CTButton(
-                        title: "View Full Analytics",
-                        icon: "chart.bar.fill",
-                        style: .neon,
-                        customNeonColor: DesignSystem.Colors.neonPurple
-                    ) {
-                        // Navigate to analytics view
+                    // Basic stats preview
+                    HStack(spacing: DesignSystem.Spacing.xl) {
+                        // Completion rate
+                        let stats = getTaskCompletionStats()
+                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) {
+                            Text("Completion Rate")
+                                .font(DesignSystem.Typography.caption1)
+                                .foregroundColor(DesignSystem.Colors.secondaryText)
+                            
+                            Text("\(Int(stats.completionRate))%")
+                                .font(DesignSystem.Typography.title3)
+                                .foregroundColor(DesignSystem.Colors.primaryText)
+                        }
+                        
+                        // Current streak
+                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) {
+                            Text("Current Streak")
+                                .font(DesignSystem.Typography.caption1)
+                                .foregroundColor(DesignSystem.Colors.secondaryText)
+                            
+                            Text("\(getCurrentStreak()) days")
+                                .font(DesignSystem.Typography.title3)
+                                .foregroundColor(DesignSystem.Colors.primaryText)
+                        }
+                        
+                        Spacer()
+                    }
+                    .padding(.vertical, DesignSystem.Spacing.s)
+                    
+                    NavigationLink {
+                        ChallengeAnalyticsView(challenge: challenge)
+                    } label: {
+                        HStack {
+                            Text("View Full Analytics")
+                                .font(DesignSystem.Typography.body)
+                                .fontWeight(.medium)
+                            
+                            Image(systemName: "chart.bar.fill")
+                                .font(.system(size: 16))
+                            
+                            Spacer()
+                            
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 14))
+                                .foregroundColor(DesignSystem.Colors.secondaryText)
+                        }
+                        .padding()
+                        .background(DesignSystem.Colors.primaryAction.opacity(0.1))
+                        .foregroundColor(DesignSystem.Colors.primaryAction)
+                        .cornerRadius(DesignSystem.BorderRadius.medium)
                     }
                 }
                 .padding()
@@ -402,6 +440,49 @@ struct ChallengeDetailView: View {
         }
         
         dismiss()
+    }
+    
+    private func getTaskCompletionStats() -> (completed: Int, total: Int, completionRate: Double) {
+        let completedTasks = dailyTasks.filter { $0.challenge?.id == challenge.id && $0.status == .completed }.count
+        let totalTasks = dailyTasks.filter { $0.challenge?.id == challenge.id }.count
+        let completionRate = totalTasks > 0 ? Double(completedTasks) / Double(totalTasks) * 100 : 0
+        
+        return (completed: completedTasks, total: totalTasks, completionRate: completionRate)
+    }
+    
+    private func getCurrentStreak() -> Int {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        
+        var currentDate = today
+        var streak = 0
+        
+        while true {
+            let tasksForDay = dailyTasks.filter { task in
+                calendar.isDate(task.date, inSameDayAs: currentDate) && task.challenge?.id == challenge.id
+            }
+            
+            if tasksForDay.isEmpty {
+                // No tasks for this day, break the streak
+                break
+            }
+            
+            let allCompleted = tasksForDay.allSatisfy { $0.status == .completed }
+            
+            if !allCompleted {
+                // Not all tasks completed, break the streak
+                break
+            }
+            
+            // Increment streak and move to previous day
+            streak += 1
+            guard let previousDay = calendar.date(byAdding: .day, value: -1, to: currentDate) else {
+                break
+            }
+            currentDate = previousDay
+        }
+        
+        return streak
     }
 }
 
