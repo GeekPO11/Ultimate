@@ -1,194 +1,120 @@
 import SwiftUI
 import PhotosUI
 
-/// Photo picker for selecting photos from the photo library
+/// Enhanced photo picker for selecting images from the photo library
 struct PhotoPicker: View {
-    let selectedChallenge: Challenge?
-    @Binding var selectedAngle: PhotoAngle
-    let onPhotoSelected: (UIImage) -> Void
+    var selectedChallenge: Challenge?
+    var selectedAngle: Binding<PhotoAngle>
+    var onPhotoSelected: (UIImage) -> Void
     
     @Environment(\.dismiss) private var dismiss
     @State private var selectedItem: PhotosPickerItem?
-    @State private var selectedImage: UIImage?
+    @State private var isLoading = false
     
     var body: some View {
         NavigationStack {
             VStack(spacing: DesignSystem.Spacing.l) {
                 // Header
-                Text("Select a Photo")
-                    .font(DesignSystem.Typography.title2)
-                    .fontWeight(.bold)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal)
-                
-                // Angle selector
-                VStack(spacing: DesignSystem.Spacing.s) {
-                    Text("Photo Angle")
-                        .font(DesignSystem.Typography.headline)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(spacing: DesignSystem.Spacing.m) {
+                    Image(systemName: "photo.on.rectangle")
+                        .font(.system(size: 48))
+                        .foregroundColor(DesignSystem.Colors.primaryAction)
                     
-                    HStack(spacing: DesignSystem.Spacing.m) {
-                        ForEach(PhotoAngle.allCases, id: \.self) { angle in
-                            Button(action: {
-                                selectedAngle = angle
-                            }) {
-                                VStack(spacing: DesignSystem.Spacing.xxs) {
-                                    Image(systemName: angle.icon)
-                                        .font(.system(size: 24))
-                                        .foregroundColor(selectedAngle == angle ? DesignSystem.Colors.neonBlue : DesignSystem.Colors.secondaryText)
-                                    
-                                    Text(angle.rawValue)
-                                        .font(DesignSystem.Typography.caption1)
-                                        .foregroundColor(selectedAngle == angle ? DesignSystem.Colors.neonBlue : DesignSystem.Colors.secondaryText)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, DesignSystem.Spacing.s)
-                                .background(
-                                    RoundedRectangle(cornerRadius: DesignSystem.BorderRadius.small)
-                                        .fill(Color.clear)
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: DesignSystem.BorderRadius.small)
-                                        .strokeBorder(selectedAngle == angle ? DesignSystem.Colors.neonBlue : DesignSystem.Colors.dividers, lineWidth: selectedAngle == angle ? 1.5 : 1)
-                                        .shadow(color: selectedAngle == angle ? DesignSystem.Colors.neonBlue.opacity(0.6) : Color.clear, radius: 3, x: 0, y: 0)
-                                )
-                            }
-                        }
-                    }
-                }
-                .padding(.horizontal)
-                
-                // Selected image preview
-                if let selectedImage = selectedImage {
                     VStack(spacing: DesignSystem.Spacing.s) {
-                        Text("Preview")
-                            .font(DesignSystem.Typography.headline)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text("Select Photo from Library")
+                            .font(DesignSystem.Typography.title2)
+                            .fontWeight(.bold)
+                            .foregroundColor(DesignSystem.Colors.primaryText)
                         
-                        Image(uiImage: selectedImage)
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(height: 300)
-                            .cornerRadius(DesignSystem.BorderRadius.medium)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: DesignSystem.BorderRadius.medium)
-                                    .stroke(DesignSystem.Colors.dividers, lineWidth: 1)
-                            )
-                    }
-                    .padding(.horizontal)
-                } else {
-                    // Photo picker
-                    PhotosPicker(
-                        selection: $selectedItem,
-                        matching: .images,
-                        photoLibrary: .shared()
-                    ) {
-                        VStack(spacing: DesignSystem.Spacing.m) {
-                            Image(systemName: "photo.on.rectangle")
-                                .font(.system(size: 60))
-                                .foregroundColor(DesignSystem.Colors.primaryAction)
-                            
-                            Text("Tap to Select a Photo")
-                                .font(DesignSystem.Typography.body)
-                                .foregroundColor(DesignSystem.Colors.secondaryText)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 200)
-                        .background(DesignSystem.Colors.cardBackground)
-                        .cornerRadius(DesignSystem.BorderRadius.medium)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: DesignSystem.BorderRadius.medium)
-                                .stroke(DesignSystem.Colors.dividers, lineWidth: 1)
-                        )
-                        .padding(.horizontal)
+                        Text("Choose a \(selectedAngle.wrappedValue.description.lowercased()) photo from your library")
+                            .font(DesignSystem.Typography.body)
+                            .foregroundColor(DesignSystem.Colors.secondaryText)
+                            .multilineTextAlignment(.center)
                     }
                 }
+                .padding()
                 
                 Spacer()
                 
-                // Action buttons
-                HStack(spacing: DesignSystem.Spacing.m) {
-                    Button(action: {
-                        dismiss()
-                    }) {
-                        Text("Cancel")
-                            .font(DesignSystem.Typography.body)
-                            .fontWeight(.medium)
-                            .foregroundColor(DesignSystem.Colors.neonPink)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, DesignSystem.Spacing.m)
-                            .background(Color.clear)
-                            .cornerRadius(DesignSystem.BorderRadius.medium)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: DesignSystem.BorderRadius.medium)
-                                    .strokeBorder(DesignSystem.Colors.neonPink, lineWidth: 1.5)
-                                    .shadow(color: DesignSystem.Colors.neonPink, radius: 4, x: 0, y: 0)
-                            )
+                // Photo picker
+                PhotosPicker(
+                    selection: $selectedItem,
+                    matching: .images,
+                    photoLibrary: .shared()
+                ) {
+                    VStack(spacing: DesignSystem.Spacing.m) {
+                        Image(systemName: "photo.badge.plus")
+                            .font(.system(size: 32))
+                            .foregroundColor(.white)
+                        
+                        Text("Browse Library")
+                            .font(DesignSystem.Typography.headline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
                     }
-                    
-                    Button(action: {
-                        if let selectedImage = selectedImage {
-                            onPhotoSelected(selectedImage)
-                            dismiss()
-                        }
-                    }) {
-                        Text("Use Photo")
-                            .font(DesignSystem.Typography.body)
-                            .fontWeight(.medium)
-                            .foregroundColor(selectedImage != nil ? DesignSystem.Colors.neonCyan : DesignSystem.Colors.neonCyan.opacity(0.5))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, DesignSystem.Spacing.m)
-                            .background(Color.clear)
-                            .cornerRadius(DesignSystem.BorderRadius.medium)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: DesignSystem.BorderRadius.medium)
-                                    .strokeBorder(selectedImage != nil ? DesignSystem.Colors.neonCyan : DesignSystem.Colors.neonCyan.opacity(0.5), lineWidth: 1.5)
-                                    .shadow(color: selectedImage != nil ? DesignSystem.Colors.neonCyan : Color.clear, radius: 4, x: 0, y: 0)
-                            )
-                    }
-                    .disabled(selectedImage == nil)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 20)
+                    .background(DesignSystem.Colors.primaryAction)
+                    .cornerRadius(DesignSystem.BorderRadius.medium)
                 }
+                .disabled(isLoading)
+                .opacity(isLoading ? 0.6 : 1.0)
                 .padding(.horizontal)
-                .padding(.bottom, DesignSystem.Spacing.l)
+                
+                if isLoading {
+                    HStack(spacing: DesignSystem.Spacing.s) {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle())
+                            .scaleEffect(0.8)
+                        
+                        Text("Loading photo...")
+                            .font(DesignSystem.Typography.body)
+                            .foregroundColor(DesignSystem.Colors.secondaryText)
+                    }
+                    .padding()
+                }
+                
+                Spacer()
             }
-            .navigationTitle("Choose Photo")
+            .background(PremiumBackground())
+            .navigationTitle("Photo Library")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") {
                         dismiss()
-                    }) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .semibold))
                     }
+                    .foregroundColor(DesignSystem.Colors.primaryAction)
                 }
             }
-            .onChange(of: selectedItem) { _, newValue in
-                loadTransferable(from: newValue)
+            .onChange(of: selectedItem) { _, newItem in
+                if let newItem = newItem {
+                    loadPhoto(from: newItem)
+                }
             }
         }
     }
     
-    /// Loads the selected image
-    private func loadTransferable(from item: PhotosPickerItem?) {
-        guard let item = item else { return }
+    private func loadPhoto(from item: PhotosPickerItem) {
+        isLoading = true
         
         item.loadTransferable(type: Data.self) { result in
             DispatchQueue.main.async {
+                self.isLoading = false
+                
                 switch result {
                 case .success(let data):
                     if let data = data, let image = UIImage(data: data) {
-                        self.selectedImage = image
+                        onPhotoSelected(image)
+                        dismiss()
                     }
                 case .failure(let error):
-                    print("Error loading image: \(error)")
+                    print("Failed to load photo: \(error)")
                 }
             }
         }
     }
 }
-
-// MARK: - Preview
 
 #Preview {
     PhotoPicker(

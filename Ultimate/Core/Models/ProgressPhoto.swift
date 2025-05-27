@@ -95,9 +95,18 @@ class ProgressPhotoService {
     /// The directory where photos are stored
     private let photoDirectory: URL
     
+    /// NSCache for caching images
+    private let imageCache = NSCache<NSString, UIImage>()
+    
     init() {
         // Create a directory for storing photos in the app's documents directory
-        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        guard let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            Logger.error("Failed to access documents directory", category: .photos)
+            // Fallback to temporary directory if documents directory is not accessible
+            photoDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("ProgressPhotos", isDirectory: true)
+            return
+        }
+        
         photoDirectory = documentsDirectory.appendingPathComponent("ProgressPhotos", isDirectory: true)
         
         // Create the directory if it doesn't exist
@@ -237,6 +246,12 @@ class ProgressPhotoService {
     
     /// Loads a photo from the file system
     func loadPhoto(from url: URL) -> UIImage? {
+        // Use NSCache for caching images
+        let cachePath = url.path
+        if let cachedImage = imageCache.object(forKey: cachePath as NSString) {
+            return cachedImage
+        }
+        
         // First check if the file exists at the exact path
         if FileManager.default.fileExists(atPath: url.path) {
             do {
@@ -245,6 +260,9 @@ class ProgressPhotoService {
                     Logger.error("Failed to create image from data for photo: \(url.lastPathComponent)", category: .photos)
                     return nil
                 }
+                
+                // Cache the loaded image
+                imageCache.setObject(image, forKey: cachePath as NSString)
                 Logger.info("Successfully loaded photo: \(url.lastPathComponent)", category: .photos)
                 return image
             } catch {
@@ -263,6 +281,9 @@ class ProgressPhotoService {
                     Logger.error("Failed to create image from data for photo at alternative location: \(newURL.lastPathComponent)", category: .photos)
                     return nil
                 }
+                
+                // Cache the loaded image
+                imageCache.setObject(image, forKey: cachePath as NSString)
                 Logger.info("Successfully loaded photo from alternative location: \(newURL.lastPathComponent)", category: .photos)
                 return image
             } catch {
@@ -270,7 +291,19 @@ class ProgressPhotoService {
             }
         }
         
-        // If still not found, try to find any file with the same challenge ID and angle
+        // Try to find any file with the same challenge ID and angle
+        if let image = tryLoadingSimilarPhoto(forFilename: filename) {
+            // Cache the loaded image
+            imageCache.setObject(image, forKey: cachePath as NSString)
+            return image
+        }
+        
+        Logger.error("Failed to load image for photo: \(url.lastPathComponent) - File not found", category: .photos)
+        return nil
+    }
+    
+    // Helper method to try loading a similar photo
+    private func tryLoadingSimilarPhoto(forFilename filename: String) -> UIImage? {
         let filenameComponents = filename.components(separatedBy: "_")
         
         var challengeIdComponent: String?
@@ -320,7 +353,6 @@ class ProgressPhotoService {
             }
         }
         
-        Logger.error("Failed to load image for photo: \(url.lastPathComponent) - File not found", category: .photos)
         return nil
     }
     

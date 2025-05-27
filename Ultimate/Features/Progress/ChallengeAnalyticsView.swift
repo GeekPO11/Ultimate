@@ -2,60 +2,47 @@ import SwiftUI
 import SwiftData
 import Charts
 
+// MARK: - Main View
+
 struct ChallengeAnalyticsView: View {
     // MARK: - Properties
     let challenge: Challenge
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
-    @Query private var dailyTasks: [DailyTask]
+    @Query private var allDailyTasks: [DailyTask]
     
-    @State private var selectedTimeFrame: TimeFrame = .all
+    private var challengeTasks: [DailyTask] {
+        allDailyTasks.filter { $0.task?.challenge?.id == challenge.id }
+    }
+    
     @State private var taskCompletionByDay: [TaskCompletionData] = []
     @State private var taskCompletionByType: [TaskTypeData] = []
     @State private var streakData: StreakData = StreakData(current: 0, best: 0, total: 0)
-    
-    enum TimeFrame: String, CaseIterable, Identifiable {
-        case week = "Week"
-        case month = "Month"
-        case all = "All"
-        
-        var id: String { self.rawValue }
-    }
     
     // MARK: - Body
     var body: some View {
         NavigationStack {
             ZStack {
-                // Premium animated background
                 PremiumBackground()
                 
                 ScrollView {
                     VStack(spacing: DesignSystem.Spacing.l) {
-                        // Challenge summary card
                         challengeSummaryCard
                         
-                        // Time frame selector
-                        timeFrameSelector
+                        consistencyScoreCard
                         
-                        // Completion trend chart
-                        completionTrendChart
-                        
-                        // Task completion by type
-                        taskTypeBreakdownChart
-                        
-                        // Streak information
                         streakCard
                         
-                        // Daily performance
-                        dailyPerformanceChart
+                        completionTrendChart
                         
-                        // Consistency score
-                        consistencyScoreCard
+                        taskTypeBreakdownChart
+                        
+                        dailyPerformanceChart
                     }
                     .padding()
                 }
                 .background(DesignSystem.Colors.background)
-                .navigationTitle("Challenge Analytics")
+                .navigationTitle("\(challenge.name) Analytics")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .navigationBarTrailing) {
@@ -65,9 +52,6 @@ struct ChallengeAnalyticsView: View {
                     }
                 }
                 .onAppear {
-                    loadAnalyticsData()
-                }
-                .onChange(of: selectedTimeFrame) { _, _ in
                     loadAnalyticsData()
                 }
             }
@@ -80,7 +64,6 @@ struct ChallengeAnalyticsView: View {
     private var challengeSummaryCard: some View {
         CTCard(style: .glass) {
             VStack(spacing: DesignSystem.Spacing.m) {
-                // Header with progress ring
                 HStack {
                     VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) {
                         Text(challenge.name)
@@ -97,14 +80,14 @@ struct ChallengeAnalyticsView: View {
                     
                     CTProgressRing(
                         progress: challenge.progress,
+                        color: getColorForChallenge(challenge),
                         lineWidth: 10,
-                        size: 80
+                        size: 100
                     )
                 }
                 
                 Divider()
                 
-                // Stats grid
                 LazyVGrid(columns: [
                     GridItem(.flexible()),
                     GridItem(.flexible()),
@@ -129,7 +112,6 @@ struct ChallengeAnalyticsView: View {
                     )
                 }
                 
-                // Date range
                 if let startDate = challenge.startDate, let endDate = challenge.endDate {
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
@@ -159,147 +141,9 @@ struct ChallengeAnalyticsView: View {
         }
     }
     
-    /// Time frame selector
-    private var timeFrameSelector: some View {
-        HStack(spacing: 0) {
-            ForEach(TimeFrame.allCases) { timeFrame in
-                Button(action: {
-                    selectedTimeFrame = timeFrame
-                }) {
-                    Text(timeFrame.rawValue)
-                        .font(DesignSystem.Typography.subheadline)
-                        .padding(.vertical, DesignSystem.Spacing.xs)
-                        .frame(maxWidth: .infinity)
-                        .background(selectedTimeFrame == timeFrame ? DesignSystem.Colors.primaryAction : DesignSystem.Colors.cardBackground)
-                        .foregroundColor(selectedTimeFrame == timeFrame ? .white : DesignSystem.Colors.primaryText)
-                }
-            }
-        }
-        .cornerRadius(DesignSystem.BorderRadius.medium)
-        .overlay(
-            RoundedRectangle(cornerRadius: DesignSystem.BorderRadius.medium)
-                .stroke(DesignSystem.Colors.dividers, lineWidth: 1)
-        )
-    }
-    
-    /// Completion trend chart
-    private var completionTrendChart: some View {
-        CTProgressChart(
-            data: taskCompletionByDay.map { day in
-                ProgressDataPoint(
-                    date: day.date,
-                    value: day.completionRate,
-                    targetValue: 100
-                )
-            },
-            chartType: .area,
-            title: "Completion Trend",
-            subtitle: "Daily completion rate"
-        )
-    }
-    
-    /// Task type breakdown chart
-    private var taskTypeBreakdownChart: some View {
-        CTProgressChart(
-            data: taskCompletionByType
-                .filter { $0.completed > 0 } // Only show task types with completed tasks
-                .map { typeData in
-                    ProgressDataPoint(
-                        date: Date(),
-                        value: Double(typeData.completed),
-                        category: typeData.type.rawValue.capitalized
-                    )
-                },
-            chartType: .pie,
-            title: "Task Breakdown",
-            subtitle: "Completion by task type"
-        )
-    }
-    
-    /// Streak card
-    private var streakCard: some View {
-        CTCard {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.m) {
-                Text("Streak Information")
-                    .font(DesignSystem.Typography.headline)
-                
-                HStack(spacing: DesignSystem.Spacing.xl) {
-                    // Current streak
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) {
-                        Text("Current Streak")
-                            .font(DesignSystem.Typography.caption1)
-                            .foregroundColor(DesignSystem.Colors.secondaryText)
-                        
-                        HStack(alignment: .firstTextBaseline, spacing: 4) {
-                            Text("\(streakData.current)")
-                                .font(DesignSystem.Typography.title2)
-                                .foregroundColor(DesignSystem.Colors.primaryText)
-                            
-                            Text("days")
-                                .font(DesignSystem.Typography.caption1)
-                                .foregroundColor(DesignSystem.Colors.secondaryText)
-                        }
-                    }
-                    
-                    // Best streak
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) {
-                        Text("Best Streak")
-                            .font(DesignSystem.Typography.caption1)
-                            .foregroundColor(DesignSystem.Colors.secondaryText)
-                        
-                        HStack(alignment: .firstTextBaseline, spacing: 4) {
-                            Text("\(streakData.best)")
-                                .font(DesignSystem.Typography.title2)
-                                .foregroundColor(DesignSystem.Colors.primaryText)
-                            
-                            Text("days")
-                                .font(DesignSystem.Typography.caption1)
-                                .foregroundColor(DesignSystem.Colors.secondaryText)
-                        }
-                    }
-                    
-                    // Perfect days
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) {
-                        Text("Perfect Days")
-                            .font(DesignSystem.Typography.caption1)
-                            .foregroundColor(DesignSystem.Colors.secondaryText)
-                        
-                        HStack(alignment: .firstTextBaseline, spacing: 4) {
-                            Text("\(streakData.total)")
-                                .font(DesignSystem.Typography.title2)
-                                .foregroundColor(DesignSystem.Colors.primaryText)
-                            
-                            Text("total")
-                                .font(DesignSystem.Typography.caption1)
-                                .foregroundColor(DesignSystem.Colors.secondaryText)
-                        }
-                    }
-                }
-            }
-            .padding()
-        }
-    }
-    
-    /// Daily performance chart
-    private var dailyPerformanceChart: some View {
-        CTProgressChart(
-            data: taskCompletionByDay.map { day in
-                ProgressDataPoint(
-                    date: day.date,
-                    value: Double(day.completed),
-                    targetValue: Double(day.total),
-                    category: "Completed"
-                )
-            },
-            chartType: .bar,
-            title: "Daily Performance",
-            subtitle: "Tasks completed each day"
-        )
-    }
-    
     /// Consistency score card
     private var consistencyScoreCard: some View {
-        let consistencyScore = calculateConsistencyScore()
+        let consistencyScore = calculateConsistencyScore(completionData: taskCompletionByDay, streakData: streakData)
         
         return CTCard(style: .gradient) {
             VStack(spacing: DesignSystem.Spacing.m) {
@@ -318,9 +162,10 @@ struct ChallengeAnalyticsView: View {
                             style: StrokeStyle(lineWidth: 15, lineCap: .round)
                         )
                         .rotationEffect(.degrees(-90))
+                        .animation(.easeOut(duration: 0.8), value: consistencyScore)
                     
                     VStack(spacing: DesignSystem.Spacing.xxs) {
-                        Text("\(Int(consistencyScore))")
+                        Text("\(Int(consistencyScore.rounded()))")
                             .font(.system(size: 40, weight: .bold))
                         
                         Text("out of 100")
@@ -340,7 +185,133 @@ struct ChallengeAnalyticsView: View {
         }
     }
     
-    // MARK: - Helper Views
+    /// Streak card
+    private var streakCard: some View {
+        CTCard {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.m) {
+                Text("Streak Information")
+                    .font(DesignSystem.Typography.headline)
+                
+                HStack(spacing: DesignSystem.Spacing.xl) {
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) {
+                        Text("Current Streak")
+                            .font(DesignSystem.Typography.caption1)
+                            .foregroundColor(DesignSystem.Colors.secondaryText)
+                        
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                            Text("\(streakData.current)")
+                                .font(DesignSystem.Typography.title2)
+                                .foregroundColor(DesignSystem.Colors.primaryText)
+                            
+                            Text("days")
+                                .font(DesignSystem.Typography.caption1)
+                                .foregroundColor(DesignSystem.Colors.secondaryText)
+                        }
+                    }
+                    
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) {
+                        Text("Best Streak")
+                            .font(DesignSystem.Typography.caption1)
+                            .foregroundColor(DesignSystem.Colors.secondaryText)
+                        
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                            Text("\(streakData.best)")
+                                .font(DesignSystem.Typography.title2)
+                                .foregroundColor(DesignSystem.Colors.primaryText)
+                            
+                            Text("days")
+                                .font(DesignSystem.Typography.caption1)
+                                .foregroundColor(DesignSystem.Colors.secondaryText)
+                        }
+                    }
+                    
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) {
+                        Text("Perfect Days")
+                            .font(DesignSystem.Typography.caption1)
+                            .foregroundColor(DesignSystem.Colors.secondaryText)
+                        
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                            Text("\(streakData.total)")
+                                .font(DesignSystem.Typography.title2)
+                                .foregroundColor(DesignSystem.Colors.primaryText)
+                            
+                            Text("total")
+                                .font(DesignSystem.Typography.caption1)
+                                .foregroundColor(DesignSystem.Colors.secondaryText)
+                        }
+                    }
+                }
+                Text("Streak counts consecutive days with *all* tasks completed for this challenge.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding()
+        }
+    }
+    
+    /// Completion trend chart
+    private var completionTrendChart: some View {
+        CTProgressChart(
+            data: taskCompletionByDay.map { day in
+                ProgressDataPoint(
+                    date: day.date,
+                    value: day.completionRate,
+                    targetValue: 100,
+                    category: "Rate"
+                )
+            },
+            chartType: .area,
+            title: "Completion Trend",
+            subtitle: "Daily completion rate (%) for this challenge"
+        )
+    }
+    
+    /// Task type breakdown chart
+    private var taskTypeBreakdownChart: some View {
+        let filteredData = taskCompletionByType.filter { $0.completed > 0 }
+        
+        return Group {
+             if filteredData.isEmpty {
+                 CTCard(style: .bordered) {
+                     Text("No tasks completed yet to show breakdown.")
+                         .font(.caption)
+                         .foregroundColor(.secondary)
+                         .padding()
+                         .frame(maxWidth: .infinity, alignment: .center)
+                 }
+             } else {
+                 CTProgressChart(
+                     data: filteredData.map { typeData in
+                         ProgressDataPoint(
+                             date: Date(),
+                             value: Double(typeData.completed),
+                             category: typeData.type.rawValue.capitalized
+                         )
+                     },
+                     chartType: .pie,
+                     title: "Task Breakdown",
+                     subtitle: "Total tasks completed by type for this challenge"
+                 )
+            }
+        }
+    }
+    
+    /// Daily performance chart
+    private var dailyPerformanceChart: some View {
+        CTProgressChart(
+            data: taskCompletionByDay.map { day in
+                ProgressDataPoint(
+                    date: day.date,
+                    value: Double(day.completed),
+                    targetValue: Double(day.total),
+                    category: "Completed"
+                )
+            },
+            chartType: .bar,
+            title: "Daily Performance",
+            subtitle: "Tasks completed vs. total scheduled per day"
+        )
+    }
     
     /// Stat item for the summary card
     private func statItem(value: String, label: String, icon: String) -> some View {
@@ -373,44 +344,36 @@ struct ChallengeAnalyticsView: View {
     private func loadTaskCompletionByDay() {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
-        
-        // Determine start date based on time frame
-        let startDate: Date
-        switch selectedTimeFrame {
-        case .week:
-            startDate = calendar.date(byAdding: .day, value: -6, to: today) ?? today
-        case .month:
-            startDate = calendar.date(byAdding: .day, value: -29, to: today) ?? today
-        case .all:
-            startDate = challenge.startDate ?? calendar.date(byAdding: .day, value: -29, to: today) ?? today
-        }
+        let startDate = challenge.startDate ?? today
+        let endDate = challenge.endDate ?? today
         
         var completionData: [TaskCompletionData] = []
         var currentDate = startDate
         
-        while currentDate <= today {
-            let dayTasks = dailyTasks.filter { task in
-                if let challengeId = task.task?.challenge?.id {
-                    return calendar.isDate(task.date, inSameDayAs: currentDate) && challengeId == challenge.id
-                }
-                return false
+        while currentDate <= endDate {
+            let dayTasks = challengeTasks.filter { task in
+                calendar.isDate(task.date, inSameDayAs: currentDate)
             }
             
             let total = dayTasks.count
             let completed = dayTasks.filter { $0.status == .completed }.count
             let completionRate = total > 0 ? Double(completed) / Double(total) * 100 : 0
             
-            completionData.append(
-                TaskCompletionData(
-                    date: currentDate,
-                    total: total,
-                    completed: completed,
-                    missed: total - completed,
-                    completionRate: completionRate
+            if total > 0 || (currentDate >= startDate && currentDate <= endDate) {
+                completionData.append(
+                    TaskCompletionData(
+                        date: currentDate,
+                        total: total,
+                        completed: completed,
+                        missed: total - completed,
+                        completionRate: completionRate
+                    )
                 )
-            )
+            }
             
-            currentDate = calendar.date(byAdding: .day, value: 1, to: currentDate) ?? currentDate
+            guard let nextDate = calendar.date(byAdding: .day, value: 1, to: currentDate) else { break }
+            currentDate = nextDate
+            if currentDate > today && challenge.status == .inProgress { break }
         }
         
         taskCompletionByDay = completionData
@@ -420,12 +383,6 @@ struct ChallengeAnalyticsView: View {
     private func loadTaskCompletionByType() {
         var typeData: [TaskType: (total: Int, completed: Int)] = [:]
         
-        // Get all daily tasks for this challenge
-        let challengeTasks = dailyTasks.filter { task in
-            task.task?.challenge?.id == challenge.id
-        }
-        
-        // Group by task type
         for dailyTask in challengeTasks {
             if let taskType = dailyTask.task?.type {
                 let currentData = typeData[taskType] ?? (total: 0, completed: 0)
@@ -435,14 +392,13 @@ struct ChallengeAnalyticsView: View {
             }
         }
         
-        // Convert to array
         taskCompletionByType = typeData.map { type, data in
             TaskTypeData(
                 type: type,
                 total: data.total,
                 completed: data.completed
             )
-        }.sorted { $0.completed > $1.completed } // Sort by completion count
+        }.sorted { $0.completed > $1.completed }
     }
     
     /// Loads streak data
@@ -450,71 +406,46 @@ struct ChallengeAnalyticsView: View {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
         
-        // Get all daily tasks for this challenge
-        let challengeTasks = dailyTasks.filter { task in
-            task.task?.challenge?.id == challenge.id
-        }
-        
-        // Group tasks by date
         var tasksByDate: [Date: [DailyTask]] = [:]
         for task in challengeTasks {
             let startOfDay = calendar.startOfDay(for: task.date)
-            var tasks = tasksByDate[startOfDay] ?? []
-            tasks.append(task)
-            tasksByDate[startOfDay] = tasks
+            tasksByDate[startOfDay, default: []].append(task)
         }
         
-        // Calculate perfect days (all tasks completed)
+        let challengeStartDate = calendar.startOfDay(for: challenge.startDate ?? Date())
+        let challengeEndDate = calendar.startOfDay(for: challenge.endDate ?? Date())
+        
         var perfectDays: [Date] = []
-        for (date, tasks) in tasksByDate {
-            let allCompleted = tasks.allSatisfy { $0.status == .completed }
-            if allCompleted && !tasks.isEmpty {
-                perfectDays.append(date)
-            }
-        }
-        
-        // Calculate current streak
+        var currentStreakDate = today
         var currentStreak = 0
-        var currentDate = today
+        var bestStreak = 0
+        var currentBestStreakInternal = 0
         
-        while true {
-            let dayTasks = tasksByDate[currentDate] ?? []
-            
-            // If no tasks for this day or not all completed, break
-            if dayTasks.isEmpty || !dayTasks.allSatisfy({ $0.status == .completed }) {
+        while currentStreakDate >= challengeStartDate {
+            let dayTasks = tasksByDate[currentStreakDate] ?? []
+            if !dayTasks.isEmpty && dayTasks.allSatisfy({ $0.status == .completed }) {
+                currentStreak += 1
+                perfectDays.append(currentStreakDate)
+            } else if !dayTasks.isEmpty {
                 break
             }
             
-            currentStreak += 1
-            currentDate = calendar.date(byAdding: .day, value: -1, to: currentDate) ?? currentDate
+            guard let previousDay = calendar.date(byAdding: .day, value: -1, to: currentStreakDate) else { break }
+            currentStreakDate = previousDay
         }
         
-        // Calculate best streak
-        var bestStreak = 0
-        var currentBestStreak = 0
+        let sortedDates = tasksByDate.keys.filter { $0 >= challengeStartDate && $0 <= challengeEndDate }.sorted()
         
-        // Sort dates in ascending order
-        let sortedDates = perfectDays.sorted()
-        
-        for i in 0..<sortedDates.count {
-            if i == 0 {
-                currentBestStreak = 1
-            } else {
-                let previousDate = sortedDates[i-1]
-                let currentDate = sortedDates[i]
-                
-                // Check if dates are consecutive
-                let daysBetween = calendar.dateComponents([.day], from: previousDate, to: currentDate).day ?? 0
-                
-                if daysBetween == 1 {
-                    currentBestStreak += 1
-                } else {
-                    currentBestStreak = 1
-                }
+        for date in sortedDates {
+            let dayTasks = tasksByDate[date] ?? []
+            if !dayTasks.isEmpty && dayTasks.allSatisfy({ $0.status == .completed }) {
+                currentBestStreakInternal += 1
+            } else if !dayTasks.isEmpty {
+                bestStreak = max(bestStreak, currentBestStreakInternal)
+                currentBestStreakInternal = 0
             }
-            
-            bestStreak = max(bestStreak, currentBestStreak)
         }
+        bestStreak = max(bestStreak, currentBestStreakInternal)
         
         streakData = StreakData(
             current: currentStreak,
@@ -524,34 +455,26 @@ struct ChallengeAnalyticsView: View {
     }
     
     /// Calculates consistency score (0-100)
-    private func calculateConsistencyScore() -> Double {
-        // If no data, return 0
-        if taskCompletionByDay.isEmpty {
-            return 0
-        }
+    private func calculateConsistencyScore(completionData: [TaskCompletionData], streakData: StreakData) -> Double {
+        let relevantDays = completionData.filter { $0.total > 0 }
+        guard !relevantDays.isEmpty else { return 0 }
+
+        let totalCompletionRate = relevantDays.reduce(0) { $0 + $1.completionRate }
+        let averageCompletionRate = totalCompletionRate / Double(relevantDays.count)
         
-        // Calculate average completion rate
-        let totalCompletionRate = taskCompletionByDay.reduce(0) { $0 + $1.completionRate }
-        let averageCompletionRate = totalCompletionRate / Double(taskCompletionByDay.count)
+        let streakRatio = Double(streakData.best) / Double(challenge.durationInDays)
+        let streakFactor = min(streakRatio * 25, 25)
         
-        // Calculate streak factor (0-20 points)
-        let streakFactor = min(Double(streakData.current) / Double(challenge.durationInDays) * 20, 20)
-        
-        // Calculate consistency factor (0-30 points)
-        // Lower standard deviation means more consistent performance
         let mean = averageCompletionRate
-        let sumOfSquaredDifferences = taskCompletionByDay.reduce(0) { $0 + pow($1.completionRate - mean, 2) }
-        let standardDeviation = sqrt(sumOfSquaredDifferences / Double(taskCompletionByDay.count))
-        let normalizedStdDev = min(standardDeviation / 100, 1) // Normalize to 0-1
-        let consistencyFactor = 30 * (1 - normalizedStdDev)
+        let sumOfSquaredDifferences = relevantDays.reduce(0) { $0 + pow($1.completionRate - mean, 2) }
+        let variance = sumOfSquaredDifferences / Double(relevantDays.count)
+        let standardDeviation = sqrt(variance)
+        let consistencyFactor = max(0, 25 - (standardDeviation / 2))
         
-        // Base score from average completion (0-50 points)
         let baseScore = averageCompletionRate * 0.5
         
-        // Combine factors
         let score = baseScore + streakFactor + consistencyFactor
-        
-        return min(score, 100) // Cap at 100
+        return min(max(score, 0), 100)
     }
     
     /// Returns gradient for consistency score
@@ -580,13 +503,27 @@ struct ChallengeAnalyticsView: View {
     /// Returns message for consistency score
     private func consistencyScoreMessage(for score: Double) -> String {
         if score < 40 {
-            return "You're just getting started. Keep pushing to build consistency!"
+            return "Keep going! Building habits takes time. Focus on completing tasks daily."
         } else if score < 70 {
-            return "Good progress! Your consistency is building. Focus on maintaining your streak."
+            return "Good effort! You're developing consistency. Try to maintain your streaks."
         } else if score < 90 {
-            return "Great work! You're showing strong consistency in your challenge."
+            return "Great consistency! You're showing strong dedication to the challenge."
         } else {
-            return "Outstanding! Your dedication and consistency are exceptional."
+            return "Excellent! Your consistency is top-notch. Keep up the amazing work!"
+        }
+    }
+    
+    /// Helper to get a color for a challenge type
+    private func getColorForChallenge(_ challenge: Challenge) -> Color {
+        switch challenge.type {
+        case .seventyFiveHard:
+            return .blue
+        case .waterFasting:
+            return Color(hex: "00C7BE")
+        case .thirtyOneModified:
+            return .purple
+        case .custom:
+            return DesignSystem.Colors.primaryAction
         }
     }
 }
@@ -594,13 +531,6 @@ struct ChallengeAnalyticsView: View {
 // MARK: - Supporting Types
 
 /// Data structure for task completion by day
-struct TaskCompletionData {
-    let date: Date
-    let total: Int
-    let completed: Int
-    let missed: Int
-    let completionRate: Double
-}
 
 /// Data structure for task completion by type
 struct TaskTypeData {
@@ -610,23 +540,21 @@ struct TaskTypeData {
 }
 
 /// Data structure for streak information
-struct StreakData {
-    let current: Int
-    let best: Int
-    let total: Int
-}
 
 // MARK: - Preview
 
 #Preview {
     // Create a sample challenge for preview
-    let challenge = Challenge(
-        type: .custom,
-        name: "Sample Challenge",
-        challengeDescription: "A sample challenge for preview",
-        durationInDays: 30
+    let sampleChallenge = Challenge(
+        type: .seventyFiveHard,
+        name: "75 Hard Preview",
+        challengeDescription: "Previewing analytics for 75 Hard.",
+        startDate: Calendar.current.date(byAdding: .day, value: -30, to: Date()),
+        durationInDays: 75
     )
     
-    return ChallengeAnalyticsView(challenge: challenge)
+    // Return the view
+    ChallengeAnalyticsView(challenge: sampleChallenge)
         .modelContainer(for: [Challenge.self, Task.self, DailyTask.self], inMemory: true)
+        .environmentObject(UserSettings())
 } 

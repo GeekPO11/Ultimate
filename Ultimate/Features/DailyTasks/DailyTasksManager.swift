@@ -117,21 +117,30 @@ class DailyTasksManager: ObservableObject {
     func getDailyTasks(for date: Date = Date()) -> [DailyTask] {
         let calendar = Calendar.current
         let startOfDay = calendar.startOfDay(for: date)
-        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
+        guard let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) else {
+            Logger.error("Failed to calculate end of day for date: \(date)", category: .tasks)
+            return []
+        }
         
         do {
-            // Fetch all daily tasks and filter in memory
-            let allDailyTasks = try modelContext.fetch(FetchDescriptor<DailyTask>())
-            
-            // Filter for the specific date
-            let dailyTasks = allDailyTasks.filter { 
-                let taskDate = $0.date
-                return taskDate >= startOfDay && taskDate < endOfDay
+            // Use SwiftData predicate for efficient database-level filtering
+            let predicate = #Predicate<DailyTask> { dailyTask in
+                dailyTask.date >= startOfDay && dailyTask.date < endOfDay
             }
             
-            // Sort by status and scheduled time in memory
+            // Create fetch descriptor with predicate and sorting
+            var descriptor = FetchDescriptor<DailyTask>(predicate: predicate)
+            
+            // Sort by date only (status sorting will be done in memory)
+            descriptor.sortBy = [
+                SortDescriptor(\DailyTask.date)
+            ]
+            
+            let dailyTasks = try modelContext.fetch(descriptor)
+            
+            // Additional in-memory sorting for complex logic that can't be done in predicate
             return dailyTasks.sorted { task1, task2 in
-                // First sort by status
+                // First sort by status (not started, in progress, completed, failed)
                 if task1.status != task2.status {
                     return task1.status.rawValue < task2.status.rawValue
                 }
@@ -217,6 +226,12 @@ class DailyTasksManager: ObservableObject {
         if let challenge = dailyTask.challenge {
             updateChallengeProgress(for: challenge)
         }
+        
+        do {
+            try modelContext.save()
+        } catch {
+            Logger.error("Error marking task missed: \(error)", category: .tasks)
+        }
     }
     
     /// Resets a daily task to not started
@@ -238,41 +253,80 @@ class DailyTasksManager: ObservableObject {
     
     /// Updates the progress for a challenge
     func updateChallengeProgress(for challenge: Challenge) {
-        guard challenge.status.rawValue == "inProgress" else { return }
-        
-        // Get all daily tasks
-        let allDailyTasks = (try? modelContext.fetch(FetchDescriptor<DailyTask>())) ?? []
-        
-        // Filter for this challenge
-        let challengeId = challenge.id
-        let dailyTasks = allDailyTasks.filter { 
-            guard let taskChallenge = $0.challenge else { return false }
-            return taskChallenge.id == challengeId 
+        guard challenge.status == .inProgress else { 
+            Logger.info("Not updating progress for non-active challenge: \(challenge.name)", category: .tasks)
+            return 
         }
         
-        // Calculate the total number of tasks that should have been completed by now
-        let today = Calendar.current.startOfDay(for: Date())
-        let totalTasksToDate = dailyTasks.filter { $0.date <= today }.count
+        // Ensure the challenge has a start date
+        guard let challengeStartDate = challenge.startDate else {
+            Logger.warning("Challenge '\(challenge.name)' has no start date, cannot calculate progress", category: .tasks)
+            return
+        }
         
-        // Calculate the number of completed tasks
-        let completedTasks = dailyTasks.filter { $0.status.rawValue == "completed" }.count
-        
-        // Update the challenge progress
-        if totalTasksToDate > 0 {
-            // Calculate progress as a percentage of completed tasks out of total tasks to date
-            let progress = Double(completedTasks) / Double(totalTasksToDate)
-            
-            // Check if the challenge is completed
-            if let endDate = challenge.endDate, endDate <= today {
-                challenge.status = progress >= 0.8 ? .completed : .failed
+        do {
+            // Use SwiftData predicate to efficiently fetch only this challenge's tasks
+            let challengeId = challenge.id
+            let predicate = #Predicate<DailyTask> { dailyTask in
+                dailyTask.challenge?.id == challengeId
             }
             
-            // Save the context
-            do {
+            let descriptor = FetchDescriptor<DailyTask>(predicate: predicate)
+            let challengeTasks = try modelContext.fetch(descriptor)
+            
+            // Calculate the total number of tasks that should have been completed by now
+            let today = Calendar.current.startOfDay(for: Date())
+            let challengeStart = Calendar.current.startOfDay(for: challengeStartDate)
+            
+            // Filter for tasks from challenge start to today (inclusive)
+            let tasksToDate = challengeTasks.filter { 
+                $0.date >= challengeStart && $0.date <= today 
+            }
+            let totalTasksToDate = tasksToDate.count
+            
+            // Calculate the number of completed tasks
+            let completedTasks = tasksToDate.filter { $0.status == .completed }.count
+            
+            Logger.info("Challenge '\(challenge.name)' progress: \(completedTasks)/\(totalTasksToDate) tasks completed (from \(challengeStart) to \(today))", category: .tasks)
+            
+            // Update the challenge progress if there are tasks to calculate against
+            if totalTasksToDate > 0 {
+                // Calculate progress as a percentage of completed tasks out of total tasks to date
+                let progress = Double(completedTasks) / Double(totalTasksToDate)
+                
+                // Ensure progress is between 0.0 and 1.0
+                let clampedProgress = max(0.0, min(1.0, progress))
+                
+                // Store progress on challenge
+                challenge.progress = clampedProgress
+                
+                Logger.info("Challenge '\(challenge.name)' progress updated to \(Int(clampedProgress * 100))%", category: .tasks)
+                
+                // Check if the challenge has ended and should be marked as completed or failed
+                if let endDate = challenge.endDate, endDate <= today {
+                    // Use a reasonable threshold for completion (80%)
+                    let completionThreshold = 0.8
+                    let newStatus = clampedProgress >= completionThreshold ? ChallengeStatus.completed : ChallengeStatus.failed
+                    
+                    if challenge.status != newStatus {
+                        challenge.status = newStatus
+                        challenge.updatedAt = Date()
+                        Logger.info("Challenge '\(challenge.name)' marked as \(newStatus.rawValue) with \(Int(clampedProgress * 100))% completion", category: .tasks)
+                    }
+                }
+                
+                // Save the context
                 try modelContext.save()
-            } catch {
-                Logger.error("Error updating challenge progress: \(error)", category: .tasks)
+                Logger.info("Challenge progress saved successfully", category: .tasks)
+                
+            } else {
+                Logger.info("No tasks scheduled to date for challenge '\(challenge.name)', progress remains at 0%", category: .tasks)
+                // Set progress to 0 if no tasks are scheduled yet
+                challenge.progress = 0.0
+                try modelContext.save()
             }
+        } catch {
+            Logger.error("Error updating challenge progress: \(error)", category: .tasks)
         }
     }
     
@@ -280,19 +334,27 @@ class DailyTasksManager: ObservableObject {
     /// - Parameter challenge: The challenge to get history for
     /// - Returns: An array of completed daily tasks for the challenge
     func getTaskHistory(for challenge: Challenge) -> [DailyTask] {
-        // Get all daily tasks
-        let allDailyTasks = (try? modelContext.fetch(FetchDescriptor<DailyTask>())) ?? []
-        
-        // Filter for this challenge and completed/failed tasks
-        let challengeId = challenge.id
-        let completedTasks = allDailyTasks.filter {
-            guard let taskChallenge = $0.challenge else { return false }
-            return taskChallenge.id == challengeId && 
-                  ($0.status == .completed || $0.status == .failed)
+        do {
+            // Use SwiftData predicate to efficiently fetch only this challenge's tasks
+            let challengeId = challenge.id
+            let predicate = #Predicate<DailyTask> { dailyTask in
+                dailyTask.challenge?.id == challengeId
+            }
+            
+            // Create fetch descriptor with predicate and sorting
+            var descriptor = FetchDescriptor<DailyTask>(predicate: predicate)
+            descriptor.sortBy = [SortDescriptor(\DailyTask.date, order: .reverse)] // Most recent first
+            
+            let allChallengeTasks = try modelContext.fetch(descriptor)
+            
+            // Filter for completed/failed tasks in memory
+            return allChallengeTasks.filter { 
+                $0.status == .completed || $0.status == .failed 
+            }
+        } catch {
+            Logger.error("Error fetching task history for challenge '\(challenge.name)': \(error)", category: .tasks)
+            return []
         }
-        
-        // Sort by date (most recent first)
-        return completedTasks.sorted { $0.date > $1.date }
     }
     
     /// Generates tasks for a newly started challenge
@@ -307,38 +369,43 @@ class DailyTasksManager: ObservableObject {
         let today = calendar.startOfDay(for: Date())
         var generatedTasks: [DailyTask] = []
         
-        // Check if we already have daily tasks for this challenge today
-        let allDailyTasks = (try? modelContext.fetch(FetchDescriptor<DailyTask>())) ?? []
-        let existingTasksToday = allDailyTasks.filter { 
-            guard let taskChallenge = $0.challenge else { return false }
-            return taskChallenge.id == challenge.id && calendar.isDate($0.date, inSameDayAs: today)
-        }
-        
-        // If we already have tasks for this challenge today, return them
-        if !existingTasksToday.isEmpty {
-            return existingTasksToday
-        }
-        
-        // Create daily tasks for each task in the challenge
-        for task in challenge.tasks {
-            // Check if the task should be scheduled for today
-            if shouldScheduleTask(task, for: today) {
-                let dailyTask = DailyTask(
-                    title: task.name,
-                    date: today,
-                    isCompleted: false,
-                    challenge: challenge,
-                    task: task
-                )
-                
-                modelContext.insert(dailyTask)
-                generatedTasks.append(dailyTask)
-                Logger.info("Generated daily task: \(dailyTask.title) for challenge: \(challenge.name)", category: .tasks)
-            }
-        }
-        
-        // Save the context
         do {
+            // Use SwiftData predicate to check if we already have daily tasks for this challenge today
+            let challengeId = challenge.id
+            let nextDay = Calendar.current.date(byAdding: .day, value: 1, to: today) ?? today.addingTimeInterval(24 * 60 * 60)
+            let predicate = #Predicate<DailyTask> { dailyTask in
+                dailyTask.challenge?.id == challengeId && 
+                dailyTask.date >= today && 
+                dailyTask.date < nextDay
+            }
+            
+            let descriptor = FetchDescriptor<DailyTask>(predicate: predicate)
+            let existingTasksToday = try modelContext.fetch(descriptor)
+            
+            // If we already have tasks for this challenge today, return them
+            if !existingTasksToday.isEmpty {
+                return existingTasksToday
+            }
+            
+            // Create daily tasks for each task in the challenge
+            for task in challenge.tasks {
+                // Check if the task should be scheduled for today
+                if shouldScheduleTask(task, for: today) {
+                    let dailyTask = DailyTask(
+                        title: task.name,
+                        date: today,
+                        isCompleted: false,
+                        challenge: challenge,
+                        task: task
+                    )
+                    
+                    modelContext.insert(dailyTask)
+                    generatedTasks.append(dailyTask)
+                    Logger.info("Generated daily task: \(dailyTask.title) for challenge: \(challenge.name)", category: .tasks)
+                }
+            }
+            
+            // Save the context
             try modelContext.save()
         } catch {
             Logger.error("Error saving daily tasks for new challenge: \(error)", category: .tasks)

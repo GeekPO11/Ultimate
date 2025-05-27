@@ -71,6 +71,13 @@ enum TaskType: String, Codable, CaseIterable {
     }
 }
 
+/// Represents the time of day for a task
+enum TimeOfDay: String, Codable {
+    case morning = "Morning"
+    case evening = "Evening"
+    case anytime = "Anytime"
+}
+
 /// Represents a task completion status
 enum TaskCompletionStatus: String, Codable {
     case notStarted = "NotStarted"
@@ -86,47 +93,64 @@ final class Task: Identifiable {
     // MARK: - Properties
     
     /// Unique identifier for the task
-    @Attribute(.unique) var id: UUID
+    @Attribute(.unique) var id: UUID = UUID()
     
     /// The name of the task
-    var name: String
+    var name: String = ""
     
     /// The description of the task
-    var taskDescription: String
+    var taskDescription: String = ""
     
     /// The type of task
-    var type: TaskType?
+    var type: TaskType? = nil
     
     /// The frequency of the task
-    var frequency: TaskFrequency
+    var frequency: TaskFrequency = TaskFrequency.daily
     
     /// The challenge this task belongs to
     @Relationship
-    var challenge: Challenge?
+    var challenge: Challenge? = nil
+    
+    /// The time of day for the task (morning, evening, or anytime)
+    var timeOfDay: TimeOfDay = TimeOfDay.anytime
     
     /// The time of day for the task (in minutes from midnight)
-    var timeOfDayMinutes: Int?
+    var timeOfDayMinutes: Int? = nil
     
     /// The duration of the task in minutes (if applicable)
-    var durationMinutes: Int?
+    var durationMinutes: Int? = nil
     
     /// The target value for the task (e.g., pages to read, water to drink)
-    var targetValue: Double?
+    var targetValue: Double? = nil
     
     /// The unit for the target value (e.g., pages, liters)
-    var targetUnit: String?
+    var targetUnit: String? = nil
     
     /// The scheduled time for the task
-    var scheduledTime: Date?
+    // Instead of using a Date? with nil, use a non-optional Date with a far past date
+    // This helps avoid nil handling issues with SwiftData
+    private var _scheduledTime: Date = Date(timeIntervalSince1970: 0)
+    
+    /// Public getter/setter for scheduledTime that handles the internal storage correctly
+    var scheduledTime: Date? {
+        get {
+            // If the date is the "null date", return nil
+            return _scheduledTime == Date(timeIntervalSince1970: 0) ? nil : _scheduledTime
+        }
+        set {
+            // Store the new value or a "null date" if nil
+            _scheduledTime = newValue ?? Date(timeIntervalSince1970: 0)
+        }
+    }
     
     /// The creation date of the task
-    var createdAt: Date
+    var createdAt: Date = Date()
     
     /// The last update date of the task
-    var updatedAt: Date
+    var updatedAt: Date = Date()
     
     /// Indicates whether the task is completed
-    var isCompleted: Bool
+    var isCompleted: Bool = false
     
     // MARK: - Initializers
     
@@ -135,9 +159,10 @@ final class Task: Identifiable {
         name: String,
         description: String,
         type: TaskType? = nil,
-        frequency: TaskFrequency = .daily,
+        frequency: TaskFrequency = TaskFrequency.daily,
         challenge: Challenge? = nil,
-        timeOfDay: DateComponents? = nil,
+        timeOfDay: TimeOfDay = TimeOfDay.anytime,
+        timeOfDayComponents: DateComponents? = nil,
         durationMinutes: Int? = nil,
         targetValue: Double? = nil,
         targetUnit: String? = nil,
@@ -150,11 +175,12 @@ final class Task: Identifiable {
         self.type = type
         self.frequency = frequency
         self.challenge = challenge
+        self.timeOfDay = timeOfDay
         
         // Convert DateComponents to minutes from midnight if provided
-        if let timeOfDay = timeOfDay {
-            let hours = timeOfDay.hour ?? 0
-            let minutes = timeOfDay.minute ?? 0
+        if let timeComponents = timeOfDayComponents {
+            let hours = timeComponents.hour ?? 0
+            let minutes = timeComponents.minute ?? 0
             self.timeOfDayMinutes = hours * 60 + minutes
         } else {
             self.timeOfDayMinutes = nil
@@ -163,20 +189,38 @@ final class Task: Identifiable {
         self.durationMinutes = durationMinutes
         self.targetValue = targetValue
         self.targetUnit = targetUnit
+        
+        // Use the property setter to handle the nil case correctly
         self.scheduledTime = scheduledTime
+        
         self.createdAt = Date()
         self.updatedAt = Date()
         self.isCompleted = isCompleted
     }
     
     // Helper computed property to get DateComponents
-    var timeOfDay: DateComponents? {
+    var timeOfDayComponents: DateComponents? {
         get {
             guard let minutes = timeOfDayMinutes else { return nil }
             var components = DateComponents()
             components.hour = minutes / 60
             components.minute = minutes % 60
             return components
+        }
+    }
+    
+    // Determine if task is a morning or evening workout based on time components
+    func inferTimeOfDay() -> TimeOfDay {
+        guard let components = timeOfDayComponents else {
+            return TimeOfDay.anytime
+        }
+        
+        let hour = components.hour ?? 0
+        
+        if hour < 12 {
+            return TimeOfDay.morning
+        } else {
+            return TimeOfDay.evening
         }
     }
 }

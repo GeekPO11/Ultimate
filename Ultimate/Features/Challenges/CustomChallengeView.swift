@@ -167,7 +167,7 @@ struct CustomChallengeView: View {
                             Slider(value: Binding(
                                 get: { Double(challengeDuration) },
                                 set: { challengeDuration = Int($0) }
-                            ), in: 7...100, step: 1)
+                            ), in: 1...365, step: 1)
                         }
                     }
                     
@@ -614,7 +614,8 @@ struct CustomChallengeView: View {
                     description: "Custom task for \(challengeName)",
                     type: taskItem.type,
                     frequency: taskItem.frequency,
-                    timeOfDay: taskItem.frequency != .anytime ? Calendar.current.dateComponents([.hour, .minute], from: taskItem.time) : nil,
+                    timeOfDay: determineTimeOfDay(from: taskItem.time),
+                    timeOfDayComponents: taskItem.frequency != .anytime ? Calendar.current.dateComponents([.hour, .minute], from: taskItem.time) : nil,
                     targetValue: taskItem.targetValue,
                     targetUnit: taskItem.targetUnit
                 )
@@ -643,6 +644,19 @@ struct CustomChallengeView: View {
             errorMessage = "Failed to create challenge: \(error.localizedDescription)"
             showingErrorAlert = true
         }
+    }
+    
+    // Helper method to determine TimeOfDay from a Date
+    private func determineTimeOfDay(from date: Date) -> TimeOfDay {
+        let components = Calendar.current.dateComponents([.hour], from: date)
+        if let hour = components.hour {
+            if hour < 12 {
+                return .morning
+            } else {
+                return .evening
+            }
+        }
+        return .anytime
     }
 }
 

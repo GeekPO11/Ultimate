@@ -19,11 +19,11 @@ enum ChallengeStatus: String, Codable {
 
 /// Represents a challenge in the app
 @Model
-final class Challenge {
+final class Challenge: ValidatableModel, TimestampedModel, SoftDeletableModel, VersionedModel {
     // MARK: - Properties
     
     /// Unique identifier for the challenge
-    var id: UUID
+    @Attribute(.unique) var id: UUID = UUID()
     
     /// The type of challenge
     var type: ChallengeType
@@ -60,97 +60,71 @@ final class Challenge {
     var imageName: String?
     
     /// The creation date of the challenge
-    var createdAt: Date
+    var createdAt: Date = Date()
     
     /// The last update date of the challenge
-    var updatedAt: Date
+    var updatedAt: Date = Date()
+    
+    /// The current progress value (0.0 to 1.0)
+    var progressValue: Double = 0.0
+    
+    /// Model version for migration support
+    var version: Int = 1
+    
+    /// Soft delete flag
+    var isDeleted: Bool = false
+    
+    /// Soft delete timestamp
+    var deletedAt: Date?
     
     // MARK: - Computed Properties
     
     /// The progress of the challenge (0.0 to 1.0)
     var progress: Double {
-        get {
-            guard status == .inProgress || status == .completed, let startDate = startDate else {
-                return 0.0
-            }
-            
-            let calendar = Calendar.current
-            let today = calendar.startOfDay(for: Date())
-            
-            if status == .completed {
-                return 1.0
-            }
-            
-            if let endDate = endDate, endDate < today {
-                // Challenge has ended but not marked as completed
-                return 0.0
-            }
-            
-            // Calculate days elapsed
-            let startDay = calendar.startOfDay(for: startDate)
-            let daysElapsed = calendar.dateComponents([.day], from: startDay, to: today).day ?? 0
-            
-            // Calculate progress as a percentage of days elapsed
-            let progress = Double(daysElapsed) / Double(durationInDays)
-            
-            // Ensure progress is between 0 and 1
-            return min(max(progress, 0.0), 1.0)
-        }
+        guard status == .inProgress || status == .completed else { return 0.0 }
+        
+        let totalDays = durationInDays
+        guard totalDays > 0 else { return 0.0 }
+        
+        let completedDays = self.completedDays
+        return min(1.0, Double(completedDays) / Double(totalDays))
     }
     
-    /// The current day of the challenge
-    var currentDay: Int {
-        get {
-            guard let startDate = startDate else {
-                return 0
-            }
-            
-            let calendar = Calendar.current
-            let startDay = calendar.startOfDay(for: startDate)
-            let today = calendar.startOfDay(for: Date())
-            
-            let daysElapsed = calendar.dateComponents([.day], from: startDay, to: today).day ?? 0
-            
-            // Ensure current day is between 1 and durationInDays
-            return min(max(daysElapsed + 1, 1), durationInDays)
-        }
-    }
-    
-    /// Returns the number of days remaining in the challenge
-    var daysRemaining: Int {
-        get {
-            guard let endDate = endDate else {
-                return durationInDays
-            }
-            
-            let now = Date()
-            let calendar = Calendar.current
-            
-            // If challenge is already completed
-            if now >= endDate {
-                return 0
-            }
-            
-            return calendar.dateComponents([.day], from: now, to: endDate).day ?? 0
-        }
-    }
-    
-    /// Returns the number of days completed in the challenge
+    /// The number of completed days
     var completedDays: Int {
-        get {
-            guard let startDate = startDate else {
-                return 0
-            }
-            
-            let calendar = Calendar.current
-            let startDay = calendar.startOfDay(for: startDate)
-            let today = calendar.startOfDay(for: Date())
-            
-            let daysElapsed = calendar.dateComponents([.day], from: startDay, to: today).day ?? 0
-            
-            // Ensure completed days is between 0 and durationInDays
-            return min(max(daysElapsed, 0), durationInDays)
-        }
+        guard let startDate = startDate else { return 0 }
+        
+        let today = Date()
+        let endDate = self.endDate ?? today
+        let actualEndDate = min(today, endDate)
+        
+        let calendar = Calendar.current
+        let daysDifference = calendar.dateComponents([.day], from: startDate, to: actualEndDate).day ?? 0
+        
+        return max(0, daysDifference)
+    }
+    
+    /// The total days in the challenge
+    var totalDays: Int {
+        return durationInDays
+    }
+    
+    /// Days remaining in the challenge
+    var daysRemaining: Int {
+        guard status == .inProgress, let endDate = endDate else { return 0 }
+        
+        let today = Date()
+        guard endDate > today else { return 0 }
+        
+        let calendar = Calendar.current
+        let daysDifference = calendar.dateComponents([.day], from: today, to: endDate).day ?? 0
+        
+        return max(0, daysDifference)
+    }
+    
+    /// Whether the challenge is active
+    var isActive: Bool {
+        return status == .inProgress
     }
     
     // MARK: - Initializers
@@ -175,6 +149,8 @@ final class Challenge {
         self.imageName = imageName
         self.createdAt = Date()
         self.updatedAt = Date()
+        self.version = 1
+        self.isDeleted = false
         
         // Calculate end date if start date is set
         if let startDate = startDate {
@@ -182,11 +158,86 @@ final class Challenge {
         }
     }
     
+    // MARK: - Validation Implementation
+    
+    func fieldValidators() -> [FieldValidator] {
+        return [
+            FieldValidator("name", rules: ValidationRule.challengeName()),
+            FieldValidator("challengeDescription", rules: ValidationRule.challengeDescription()),
+            FieldValidator("durationInDays", rules: ValidationRule.challengeDuration())
+        ]
+    }
+    
+    func validateBusinessRules() throws {
+        // Challenge name uniqueness (would need service layer for global check)
+        if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            throw ValidationError.required(field: "name")
+        }
+        
+        // Duration validation
+        if durationInDays <= 0 {
+            throw ValidationError.invalidRange(field: "durationInDays", min: 1, max: 365)
+        }
+        
+        if durationInDays > 365 {
+            throw ValidationError.invalidRange(field: "durationInDays", min: 1, max: 365)
+        }
+        
+        // Status validation
+        if status == .inProgress && startDate == nil {
+            throw ValidationError.businessRuleViolation("Cannot start challenge without a start date")
+        }
+        
+        if status == .completed && startDate == nil {
+            throw ValidationError.businessRuleViolation("Cannot complete challenge without a start date")
+        }
+        
+        // Task validation for specific challenge types
+        if type == .seventyFiveHard && tasks.count > 0 && tasks.count != 5 {
+            throw ValidationError.businessRuleViolation("75 Hard challenge must have exactly 5 tasks")
+        }
+        
+        if type == .waterFasting && tasks.count > 0 && !tasks.contains(where: { $0.type == .water }) {
+            throw ValidationError.businessRuleViolation("Water fasting challenge must include a water task")
+        }
+    }
+    
+    func validateCrossFields() throws {
+        // Date range validation
+        if let startDate = startDate, let endDate = endDate {
+            if endDate <= startDate {
+                throw ValidationError.invalidDate(field: "endDate", reason: "End date must be after start date")
+            }
+            
+            let calendar = Calendar.current
+            let daysDifference = calendar.dateComponents([.day], from: startDate, to: endDate).day ?? 0
+            
+            if daysDifference != durationInDays {
+                throw ValidationError.businessRuleViolation("End date must be exactly \(durationInDays) days after start date")
+            }
+        }
+        
+        // Progress validation
+        if progressValue < 0.0 || progressValue > 1.0 {
+            throw ValidationError.invalidRange(field: "progressValue", min: 0.0, max: 1.0)
+        }
+        
+        // Status transition validation
+        if status == .completed && progress < 1.0 && daysRemaining > 0 {
+            throw ValidationError.businessRuleViolation("Cannot mark challenge as completed before it's finished")
+        }
+    }
+    
     // MARK: - Methods
     
     /// Starts the challenge
-    func startChallenge() {
-        guard status == .notStarted else { return }
+    func startChallenge() throws {
+        guard status == .notStarted else {
+            throw ValidationError.businessRuleViolation("Challenge is already started")
+        }
+        
+        // Validate before starting
+        try validate()
         
         self.startDate = Date()
         self.endDate = Calendar.current.date(byAdding: .day, value: durationInDays, to: startDate!)
@@ -198,10 +249,13 @@ final class Challenge {
     }
     
     /// Completes the challenge
-    func completeChallenge() {
-        guard status == .inProgress else { return }
+    func completeChallenge() throws {
+        guard status == .inProgress else {
+            throw ValidationError.businessRuleViolation("Cannot complete a challenge that is not in progress")
+        }
         
         self.status = .completed
+        self.progressValue = 1.0
         self.updatedAt = Date()
         
         // If the challenge is completed early, set the end date to today
@@ -214,8 +268,10 @@ final class Challenge {
     }
     
     /// Fails the challenge
-    func failChallenge() {
-        guard status == .inProgress else { return }
+    func failChallenge() throws {
+        guard status == .inProgress else {
+            throw ValidationError.businessRuleViolation("Cannot fail a challenge that is not in progress")
+        }
         
         self.status = .failed
         self.updatedAt = Date()
@@ -227,6 +283,66 @@ final class Challenge {
         
         // Remove notifications for the challenge
         NotificationManager.shared.removeNotificationsForChallenge(self)
+    }
+    
+    /// Pauses the challenge (if supported)
+    func pauseChallenge() throws {
+        guard status == .inProgress else {
+            throw ValidationError.businessRuleViolation("Cannot pause a challenge that is not in progress")
+        }
+        
+        // For now, we don't support pausing, but this is where the logic would go
+        throw ValidationError.businessRuleViolation("Challenge pausing is not currently supported")
+    }
+    
+    /// Resumes the challenge (if supported)
+    func resumeChallenge() throws {
+        // For now, we don't support resuming, but this is where the logic would go
+        throw ValidationError.businessRuleViolation("Challenge resuming is not currently supported")
+    }
+    
+    /// Updates the challenge progress
+    func updateProgress() {
+        guard status == .inProgress else { return }
+        
+        let calculatedProgress = self.progress
+        self.progressValue = calculatedProgress
+        self.updatedAt = Date()
+    }
+    
+    /// Adds a task to the challenge
+    func addTask(_ task: Task) throws {
+        // Validate the task first
+        try task.validate()
+        
+        // Check if task is already in the challenge
+        if tasks.contains(where: { $0.id == task.id }) {
+            throw ValidationError.businessRuleViolation("Task is already part of this challenge")
+        }
+        
+        // Set the relationship
+        task.challenge = self
+        tasks.append(task)
+        
+        // Validate business rules after adding task
+        try validateBusinessRules()
+        
+        self.updatedAt = Date()
+    }
+    
+    /// Removes a task from the challenge
+    func removeTask(_ task: Task) throws {
+        guard let index = tasks.firstIndex(where: { $0.id == task.id }) else {
+            throw ValidationError.businessRuleViolation("Task is not part of this challenge")
+        }
+        
+        tasks.remove(at: index)
+        task.challenge = nil
+        
+        // Validate business rules after removing task
+        try validateBusinessRules()
+        
+        self.updatedAt = Date()
     }
     
     // MARK: - Factory Methods
@@ -241,91 +357,18 @@ final class Challenge {
             imageName: "75hard"
         )
         
-        // Create tasks for the challenge
-        let workoutTask1 = Task(
-            name: "First 45-Minute Workout",
-            description: "Complete your first 45-minute workout of the day.",
-            type: .workout,
-            frequency: .daily
-        )
-        
-        let workoutTask2 = Task(
-            name: "Second 45-Minute Workout (Outdoors)",
-            description: "Complete your second 45-minute workout of the day outdoors.",
-            type: .workout,
-            frequency: .daily
-        )
-        
-        let dietTask = Task(
-            name: "Follow Diet Plan",
-            description: "Stick to your chosen diet plan with zero cheating.",
-            type: .nutrition,
-            frequency: .daily
-        )
-        
-        let waterTask = Task(
-            name: "Drink 1 Gallon of Water",
-            description: "Drink 1 gallon (3.8 liters) of water throughout the day.",
-            type: .water,
-            frequency: .daily,
-            targetValue: 1.0,
-            targetUnit: "gallon"
-        )
-        
-        let readingTask = Task(
-            name: "Read 10 Pages",
-            description: "Read 10 pages of a non-fiction book.",
-            type: .reading,
-            frequency: .daily
-        )
-        
-        let photoTask = Task(
-            name: "Take Progress Photo",
-            description: "Take a daily progress photo.",
-            type: .photo,
-            frequency: .daily
-        )
-        
-        challenge.tasks = [workoutTask1, workoutTask2, dietTask, waterTask, readingTask, photoTask]
-        
         return challenge
     }
     
     /// Creates a Water Fasting challenge
-    static func createWaterFastingChallenge(durationInDays: Int = 7) -> Challenge {
+    static func createWaterFastingChallenge(durationInDays: Int = 3) -> Challenge {
         let challenge = Challenge(
             type: .waterFasting,
-            name: "7 Day Water Fast",
-            challengeDescription: "Cleanse your body and reset your system with a water fast.",
+            name: "Water Fasting Challenge",
+            challengeDescription: "A focused water fasting program for health and mindfulness.",
             durationInDays: durationInDays,
-            imageName: "waterfasting"
+            imageName: "water_fasting"
         )
-        
-        // Create tasks for the challenge
-        let fastingTask = Task(
-            name: "Maintain Fast",
-            description: "Consume only water throughout the day.",
-            type: .nutrition,
-            frequency: .daily
-        )
-        
-        let waterTask = Task(
-            name: "Drink Water",
-            description: "Drink at least 2 liters of water throughout the day.",
-            type: .water,
-            frequency: .daily,
-            targetValue: 2.0,
-            targetUnit: "liters"
-        )
-        
-        let journalTask = Task(
-            name: "Journal Entry",
-            description: "Record your experiences, feelings, and any physical changes.",
-            type: .journal,
-            frequency: .daily
-        )
-        
-        challenge.tasks = [fastingTask, waterTask, journalTask]
         
         return challenge
     }
@@ -335,42 +378,76 @@ final class Challenge {
         let challenge = Challenge(
             type: .thirtyOneModified,
             name: "31 Modified Challenge",
-            challengeDescription: "A more balanced approach to the 75 Hard challenge, designed for sustainable progress.",
+            challengeDescription: "A balanced 31-day program for sustainable lifestyle changes.",
             durationInDays: 31,
             imageName: "31modified"
         )
         
-        // Create tasks for the challenge
-        let workoutTask = Task(
-            name: "30-Minute Workout",
-            description: "Complete a 30-minute workout of your choice.",
-            type: .workout,
-            frequency: .daily
-        )
-        
-        let nutritionTask = Task(
-            name: "Follow Nutrition Plan",
-            description: "Stick to your nutrition plan with one cheat meal allowed per week.",
-            type: .nutrition,
-            frequency: .daily
-        )
-        
-        let waterTask = Task(
-            name: "Drink 2 Liters of Water",
-            description: "Drink at least 2 liters of water throughout the day.",
-            type: .water,
-            frequency: .daily
-        )
-        
-        let progressTask = Task(
-            name: "Track Progress",
-            description: "Record your progress for the day.",
-            type: .journal,
-            frequency: .daily
-        )
-        
-        challenge.tasks = [workoutTask, nutritionTask, waterTask, progressTask]
-        
         return challenge
+    }
+    
+    /// Creates a custom challenge
+    static func createCustomChallenge(
+        name: String,
+        description: String,
+        durationInDays: Int
+    ) -> Challenge {
+        return Challenge(
+            type: .custom,
+            name: name,
+            challengeDescription: description,
+            durationInDays: durationInDays,
+            imageName: "custom"
+        )
+    }
+}
+
+// MARK: - Challenge Extensions
+
+extension Challenge: Identifiable {}
+
+extension Challenge: Hashable {
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+}
+
+extension Challenge: Equatable {
+    static func == (lhs: Challenge, rhs: Challenge) -> Bool {
+        return lhs.id == rhs.id
+    }
+}
+
+// MARK: - Challenge Analytics Extension
+
+extension Challenge {
+    /// Analytics data for the challenge
+    var analyticsData: [String: Any]? {
+        get {
+            // This would be implemented when we add analytics storage
+            return nil
+        }
+        set {
+            // This would be implemented when we add analytics storage
+        }
+    }
+    
+    /// Calculate consistency score for the challenge
+    func calculateConsistencyScore() -> Double {
+        guard status == .inProgress || status == .completed else { return 0.0 }
+        guard let startDate = startDate else { return 0.0 }
+        
+        let calendar = Calendar.current
+        let today = Date()
+        let endDate = self.endDate ?? today
+        let actualEndDate = min(today, endDate)
+        
+        let totalDays = calendar.dateComponents([.day], from: startDate, to: actualEndDate).day ?? 0
+        guard totalDays > 0 else { return 0.0 }
+        
+        // This is a simplified calculation
+        // In a real implementation, you'd calculate based on actual daily task completion
+        let completionRate = Double(completedDays) / Double(totalDays)
+        return min(100.0, completionRate * 100.0)
     }
 } 

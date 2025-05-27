@@ -1,431 +1,207 @@
 import SwiftUI
 import SwiftData
 import Charts
+import UIKit
+
+// MARK: - Main View
 
 struct ProgressTrackingView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \Challenge.startDate) private var challenges: [Challenge]
+    @Query(sort: \Challenge.startDate, order: .reverse) private var challenges: [Challenge]
     @Query(sort: \DailyTask.date) private var dailyTasks: [DailyTask]
     @EnvironmentObject var userSettings: UserSettings
     
     @State private var selectedTimeFrame: TimeFrame = .week
-    @State private var showingAnalytics: Bool = false
-    @State private var challengeForAnalytics: Challenge?
+    @State private var showingAnalyticsChallenge: Challenge?
+    @State private var showingDetailedStats = false
+    @State private var isLandscape = false
     
-    // Progress tracking variables
-    private var completedChallenges: Int {
-        challenges.filter { $0.status == .completed }.count
+    // --- Computed Properties for Overall Progress ---
+    
+    private var activeChallenges: [Challenge] {
+        challenges.filter { $0.status == .inProgress }
     }
     
-    private var activeChallengesCount: Int {
-        challenges.filter { $0.status == .inProgress }.count
+    private var completedChallenges: [Challenge] {
+        challenges.filter { $0.status == .completed }
     }
     
-    private var totalTasksCompleted: Int {
-        dailyTasks.filter { $0.status == .completed }.count
+    private var failedChallenges: [Challenge] {
+        challenges.filter { $0.status == .failed }
     }
     
-    private var overallProgress: Double {
-        let totalChallenges = challenges.count
-        if totalChallenges == 0 {
-            return 0.0
-        }
-        
-        let completedWeight = Double(completedChallenges) / Double(totalChallenges)
-        let inProgressWeight = challenges.filter { $0.status == .inProgress }
-            .reduce(0.0) { $0 + $1.progress } / Double(totalChallenges)
-        
-        return completedWeight + inProgressWeight
+    private var overallStreakData: StreakData {
+        calculateOverallStreak(dailyTasks: dailyTasks)
     }
     
-    // Task data for charts
-    private var filteredTaskData: [PTTaskCompletionData] {
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
-        
-        var startDate: Date
-        switch selectedTimeFrame {
-        case .week:
-            startDate = calendar.date(byAdding: .day, value: -7, to: today) ?? today
-        case .month:
-            startDate = calendar.date(byAdding: .month, value: -1, to: today) ?? today
-        case .all:
-            // For "All", go back to the earliest task date or 1 year, whichever is earlier
-            if let earliestTask = dailyTasks.min(by: { $0.date < $1.date }) {
-                startDate = calendar.startOfDay(for: earliestTask.date)
-            } else {
-                startDate = calendar.date(byAdding: .year, value: -1, to: today) ?? today
-            }
-        }
-        
-        // Ensure we have data for each day in the range
-        var currentDate = startDate
-        var allDates: [Date] = []
-        
-        while currentDate <= today {
-            allDates.append(currentDate)
-            guard let nextDate = calendar.date(byAdding: .day, value: 1, to: currentDate) else { break }
-            currentDate = nextDate
-        }
-        
-        // Filter tasks within the date range
-        let filteredTasks = dailyTasks.filter { $0.date >= startDate && $0.date <= today }
-        
-        // Group by date and count completed tasks
-        var tasksByDate: [Date: PTTaskCompletionData] = [:]
-        
-        // Initialize with zero values for all dates in range
-        for date in allDates {
-            tasksByDate[date] = PTTaskCompletionData(
-                date: date,
-                completed: 0,
-                total: 0
-            )
-        }
-        
-        // Fill in actual data
-        for task in filteredTasks {
-            let dateKey = calendar.startOfDay(for: task.date)
-            
-            var data = tasksByDate[dateKey] ?? PTTaskCompletionData(
-                date: dateKey,
-                completed: 0,
-                total: 0
-            )
-            
-            data.total += 1
-            
-            if task.status == .completed {
-                data.completed += 1
-            }
-            
-            tasksByDate[dateKey] = data
-        }
-        
-        // Convert to array and sort by date
-        return tasksByDate.values.sorted { $0.date < $1.date }
-    }
-    
-    private var maxTaskCount: Int {
-        let maxCompleted = filteredTaskData.map { $0.completed }.max() ?? 0
-        let maxTotal = filteredTaskData.map { $0.total }.max() ?? 0
-        return max(maxCompleted, maxTotal)
-    }
-    
-    // Streak tracking
-    private var currentStreak: Int {
-        calculateCurrentStreak()
-    }
-    
-    private var longestStreak: Int {
-        calculateLongestStreak()
-    }
-    
-    // Get the active challenge (assuming only one is active at a time)
-    private var activeChallenge: Challenge? {
-        challenges.first(where: { $0.status == .inProgress })
+    private var overallTaskCompletionData: [TaskCompletionData] {
+        calculateOverallTaskCompletion(dailyTasks: dailyTasks, timeFrame: selectedTimeFrame)
     }
     
     enum TimeFrame: String, CaseIterable, Identifiable {
-        case week = "Week"
-        case month = "Month"
-        case all = "All"
+        case week = "Last 7 Days"
+        case month = "Last 30 Days"
+        case all = "All Time"
         
         var id: String { self.rawValue }
     }
     
+    // --- Body ---
     var body: some View {
-        ZStack {
-            // Premium animated background
-            PremiumBackground()
-            
-            ScrollView {
-                VStack(spacing: DesignSystem.Spacing.l) {
-                    // Active challenge title
-                    if let activeChallenge = activeChallenge {
-                        Text(activeChallenge.name)
-                            .font(DesignSystem.Typography.title2)
-                            .fontWeight(.bold)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal)
-                    } else {
-                        Text("No Active Challenge")
-                            .font(DesignSystem.Typography.title2)
-                        .fontWeight(.bold)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal)
+        NavigationStack {
+            ZStack {
+                PremiumBackground()
+                
+                ScrollView {
+                    VStack(spacing: DesignSystem.Spacing.l) {
+                        // Overall Summary Stats
+                        overallSummaryStats
+                        
+                        // Fitness Integration View
+                        FitnessIntegrationView()
+                        
+                        // Time frame selector for charts
+                        timeFrameSelector
+                        
+                        // Overall Task Completion Chart
+                        overallTaskCompletionChart
+                        
+                        // Overall Streak Card
+                        overallStreakCard
+                        
+                        // View Detailed Stats Button
+                        detailedStatsButton
+                        
+                        // Active Challenges List
+                        activeChallengesList
                     }
-                    
-                    // Time frame selector
-                    timeFrameSelector
-                    
-                    // Progress summary
-                    if let activeChallenge = activeChallenge {
-                        challengeProgressSummary(for: activeChallenge)
-                            .onTapGesture {
-                                // Pre-load the challenge for analytics before showing the sheet
-                                challengeForAnalytics = activeChallenge
-                                // Small delay to ensure data is ready
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                    showingAnalytics = true
-                                }
-                            }
-                    } else {
-                        overallProgressSummary
-                    }
-                    
-                    // Task completion chart
-                    taskCompletionChart
-                    
-                    // New trend chart
-                    trendChart
-                    
-                    // Streak tracking
-                    streakTrackingCard
+                    .padding()
                 }
-                .padding()
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .background(DesignSystem.Colors.background)
-            .sheet(isPresented: $showingAnalytics) {
-                if let challenge = challengeForAnalytics {
+                .background(DesignSystem.Colors.background)
+                .navigationTitle("Overall Progress")
+                .navigationBarTitleDisplayMode(.inline)
+                .sheet(item: $showingAnalyticsChallenge) { challenge in
                     ChallengeAnalyticsView(challenge: challenge)
-                        .onAppear {
-                            // Force refresh of the analytics view when it appears
-                            print("Analytics view appeared for challenge: \(challenge.name)")
-                        }
                 }
-            }
-            .onChange(of: selectedTimeFrame) { _, _ in
-                // Force refresh when time frame changes
-                print("Time frame changed to: \(selectedTimeFrame.rawValue)")
+                .fullScreenCover(isPresented: $showingDetailedStats) {
+                    DetailedStatsView(
+                        taskCompletionData: overallTaskCompletionData,
+                        streakData: overallStreakData,
+                        timeFrame: $selectedTimeFrame
+                    )
+                }
+                .onChange(of: selectedTimeFrame) { _, _ in
+                    // Data recalculates automatically due to @State / computed properties
+                    Logger.info("Time frame changed to: \(selectedTimeFrame.rawValue)", category: .analytics)
+                }
+                .onAppear {
+                    // Add observer for automatic workout completion
+                    NotificationCenter.default.addObserver(
+                        forName: Notification.Name("WorkoutTaskCompletedAutomatically"),
+                        object: nil,
+                        queue: .main
+                    ) { _ in
+                        // Force a view refresh when a workout is completed automatically
+                        // Data will update automatically due to @Query
+                    }
+                }
+                .onDisappear {
+                    // Remove observer when view disappears
+                    NotificationCenter.default.removeObserver(self, name: Notification.Name("WorkoutTaskCompletedAutomatically"), object: nil)
+                }
             }
         }
     }
     
     // MARK: - View Components
     
+    /// Overall summary stats card
+    private var overallSummaryStats: some View {
+        CTCard(style: .glass) {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.m) {
+                Text("Lifetime Stats")
+                    .font(DesignSystem.Typography.headline)
+                
+                HStack(spacing: DesignSystem.Spacing.l) {
+                    statItem(value: "\(challenges.count)", label: "Total", icon: "target")
+                    statItem(value: "\(activeChallenges.count)", label: "Active", icon: "figure.run", color: .orange)
+                    statItem(value: "\(completedChallenges.count)", label: "Completed", icon: "checkmark.seal.fill", color: .green)
+                    statItem(value: "\(failedChallenges.count)", label: "Failed", icon: "xmark.octagon.fill", color: .red)
+                }
+            }
+            .padding()
+        }
+    }
+    
     /// Time frame selector
     private var timeFrameSelector: some View {
-        TimeFrameSelectorView(selectedTimeFrame: $selectedTimeFrame)
-    }
-    
-    // Helper view for time frame selection
-    private struct TimeFrameSelectorView: View {
-        @Binding var selectedTimeFrame: TimeFrame
-        
-        var body: some View {
-            HStack(spacing: 0) {
-                ForEach(TimeFrame.allCases) { timeFrame in
-                    Button(action: {
-                        selectedTimeFrame = timeFrame
-                    }) {
-                        Text(timeFrame.rawValue)
-                            .font(DesignSystem.Typography.subheadline)
-                            .padding(.vertical, DesignSystem.Spacing.xs)
-                            .frame(maxWidth: .infinity)
-                            .background(selectedTimeFrame == timeFrame ? 
-                                DesignSystem.Colors.primaryAction : 
-                                DesignSystem.Colors.cardBackground)
-                            .foregroundColor(selectedTimeFrame == timeFrame ? 
-                                .white : 
-                                DesignSystem.Colors.primaryText)
-                    }
-                }
+        Picker("Time Frame", selection: $selectedTimeFrame) {
+            ForEach(TimeFrame.allCases) { timeFrame in
+                Text(timeFrame.rawValue).tag(timeFrame)
             }
-            .cornerRadius(DesignSystem.BorderRadius.medium)
-            .overlay(
-                RoundedRectangle(cornerRadius: DesignSystem.BorderRadius.medium)
-                    .stroke(DesignSystem.Colors.dividers, lineWidth: 1)
-            )
         }
+        .pickerStyle(.segmented)
+        .padding(.horizontal)
     }
     
-    /// Challenge progress summary
-    private func challengeProgressSummary(for challenge: Challenge) -> some View {
-        CTCard(style: .glass) {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.m) {
-                HStack {
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) {
-                Text(challenge.name)
-                            .font(DesignSystem.Typography.headline)
-                            .foregroundColor(DesignSystem.Colors.primaryText)
-                        
-                        Text("Day \(challenge.currentDay) of \(challenge.durationInDays)")
-                            .font(DesignSystem.Typography.subheadline)
-                            .foregroundColor(DesignSystem.Colors.secondaryText)
-                    }
-                    
-                    Spacer()
-                    
-                    CTProgressRing(
-                        progress: challenge.progress,
-                        size: 60
-                    )
-                }
-                
-                let stats = getTaskCompletionStats(for: challenge)
-                HStack(spacing: DesignSystem.Spacing.xl) {
-                    // Completed tasks
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) {
-                        Text("Completed")
-                            .font(DesignSystem.Typography.caption1)
-                            .foregroundColor(DesignSystem.Colors.secondaryText)
-                        
-                        Text("\(stats.completed)")
-                            .font(DesignSystem.Typography.title3)
-                    }
-                    
-                    // Total tasks
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) {
-                        Text("Total Tasks")
-                            .font(DesignSystem.Typography.caption1)
-                            .foregroundColor(DesignSystem.Colors.secondaryText)
-                        
-                        Text("\(stats.total)")
-                            .font(DesignSystem.Typography.title3)
-                    }
-                    
-                    // Completion rate
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) {
-                        Text("Completion")
-                            .font(DesignSystem.Typography.caption1)
-                            .foregroundColor(DesignSystem.Colors.secondaryText)
-                        
-                        Text("\(Int(stats.completionRate))%")
-                            .font(DesignSystem.Typography.title3)
-                    }
-                }
-                
-                // Tap for analytics hint
-                HStack {
-                    Spacer()
-                    
-                    Text("Tap for detailed analytics")
-                        .font(DesignSystem.Typography.caption2)
-                        .foregroundColor(DesignSystem.Colors.secondaryText)
-                        .padding(.top, DesignSystem.Spacing.xxs)
-                    
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12))
-                        .foregroundColor(DesignSystem.Colors.secondaryText)
-                }
-            }
-            .padding()
-        }
-    }
-    
-    /// Overall progress summary
-    private var overallProgressSummary: some View {
-        CTCard(style: .glass) {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.m) {
-                Text("Overall Progress")
-                    .font(DesignSystem.Typography.headline)
-                
-                HStack(spacing: DesignSystem.Spacing.xl) {
-                    // Active challenges
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) {
-                        Text("Active Challenges")
-                            .font(DesignSystem.Typography.caption1)
-                            .foregroundColor(DesignSystem.Colors.secondaryText)
-                        
-                        Text("\(challenges.filter { $0.status == .inProgress }.count)")
-                            .font(DesignSystem.Typography.title2)
-                    }
-                    
-                    // Completed challenges
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) {
-                        Text("Completed")
-                            .font(DesignSystem.Typography.caption1)
-                            .foregroundColor(DesignSystem.Colors.secondaryText)
-                        
-                        Text("\(challenges.filter { $0.status == .completed }.count)")
-                            .font(DesignSystem.Typography.title2)
-                    }
-                    
-                    // Failed challenges
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) {
-                        Text("Failed")
-                            .font(DesignSystem.Typography.caption1)
-                            .foregroundColor(DesignSystem.Colors.secondaryText)
-                        
-                        Text("\(challenges.filter { $0.status == .failed }.count)")
-                            .font(DesignSystem.Typography.title2)
-                    }
-                }
-                
-                // Multi-ring progress
-                if !challenges.filter({ $0.status == .inProgress }).isEmpty {
-                    HStack {
-                        Spacer()
-                        
-                        CTMultiProgressRing(rings: getMultiRingData())
-                        
-                        Spacer()
-                    }
-                    .padding(.top, DesignSystem.Spacing.s)
-                }
-            }
-            .padding()
-        }
-    }
-    
-    /// Task completion chart
-    private var taskCompletionChart: some View {
-        CTCard(style: .glass) {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.m) {
-                Text("Task Completion")
-                    .font(DesignSystem.Typography.headline)
-                    .foregroundColor(DesignSystem.Colors.primaryText)
-                
-                CTProgressChart(
-                    data: getChartData().map { item in
-                        ProgressDataPoint(
-                            date: item.date,
-                            value: Double(item.completed),
-                            targetValue: Double(item.completed + item.missed),
-                            category: "Completed"
-                        )
-                    },
-                    chartType: .bar,
-                    title: "Task Completion",
-                    subtitle: "Daily performance"
+    /// Overall Task Completion Chart
+    private var overallTaskCompletionChart: some View {
+        CTProgressChart(
+            data: overallTaskCompletionData.map { dayData in
+                ProgressDataPoint(
+                    date: dayData.date,
+                    value: Double(dayData.completed),
+                    targetValue: Double(dayData.total), // Use total for bar chart context
+                    category: "Completed"
                 )
-            }
-        }
+            },
+            chartType: .bar,
+            title: "Daily Task Completion",
+            subtitle: "Tasks completed across all challenges (\(selectedTimeFrame.rawValue))"
+        )
     }
     
-    /// Streak tracking card
-    private var streakTrackingCard: some View {
+    /// Overall Streak Card
+    private var overallStreakCard: some View {
         CTCard(style: .glass) {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.m) {
-                Text("Current Streak")
+                Text("Overall Activity Streak") // Clarified title
                     .font(DesignSystem.Typography.headline)
                 
                 HStack(spacing: DesignSystem.Spacing.xl) {
                     VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) {
-                        Text("Days")
+                        Text("Current")
                             .font(DesignSystem.Typography.caption1)
                             .foregroundColor(DesignSystem.Colors.secondaryText)
                         
-                        Text("\(getCurrentStreak())")
-                            .font(DesignSystem.Typography.title1)
-                            .foregroundColor(DesignSystem.Colors.primaryText)
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                            Text("\(overallStreakData.current)")
+                                .font(DesignSystem.Typography.title1)
+                                .foregroundColor(DesignSystem.Colors.primaryText)
+                            Text(overallStreakData.current == 1 ? "day" : "days") // Pluralization
+                                .font(DesignSystem.Typography.caption1)
+                                .foregroundColor(DesignSystem.Colors.secondaryText)
+                        }
                     }
                     
                     VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) {
-                        Text("Best Streak")
+                        Text("Best")
                             .font(DesignSystem.Typography.caption1)
                             .foregroundColor(DesignSystem.Colors.secondaryText)
                         
-                        Text("\(getBestStreak())")
-                            .font(DesignSystem.Typography.title3)
-                            .foregroundColor(DesignSystem.Colors.secondaryText)
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                            Text("\(overallStreakData.best)")
+                                .font(DesignSystem.Typography.title3)
+                                .foregroundColor(DesignSystem.Colors.primaryText)
+                             Text(overallStreakData.best == 1 ? "day" : "days") // Pluralization
+                                .font(DesignSystem.Typography.caption1)
+                                .foregroundColor(DesignSystem.Colors.secondaryText)
+                        }
                     }
                     
                     Spacer()
                     
-                    // Flame icon with streak
+                    // Flame icon
                     ZStack {
                         Circle()
                             .fill(DesignSystem.Colors.primaryAction.opacity(0.1))
@@ -433,205 +209,582 @@ struct ProgressTrackingView: View {
                         
                         Image(systemName: "flame.fill")
                             .font(.system(size: 30))
-                            .foregroundColor(DesignSystem.Colors.primaryAction)
+                            .foregroundColor(overallStreakData.current > 0 ? DesignSystem.Colors.primaryAction : DesignSystem.Colors.secondaryText)
                     }
                 }
+                Text("Streak counts days with at least one completed task.") // Explain streak logic
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
             .padding()
         }
     }
     
-    /// New trend chart
-    private var trendChart: some View {
-        CTCard(style: .glass) {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.m) {
-                Text("Progress Trend")
+    /// Detailed stats button
+    private var detailedStatsButton: some View {
+        Button {
+            showingDetailedStats = true
+        } label: {
+            HStack {
+                Image(systemName: "chart.xyaxis.line")
+                    .font(.system(size: 18))
+                Text("View Detailed Statistics")
                     .font(DesignSystem.Typography.headline)
-                    .foregroundColor(DesignSystem.Colors.primaryText)
-                
-                CTProgressChart(
-                    data: getTrendData(),
-                    chartType: .line,
-                    title: "Completion Trend",
-                    subtitle: "Task completion over time"
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14))
+            }
+            .foregroundColor(.white)
+            .padding()
+            .background(
+                LinearGradient(
+                    gradient: Gradient(colors: [DesignSystem.Colors.primaryAction, DesignSystem.Colors.primaryAction.opacity(0.7)]),
+                    startPoint: .leading,
+                    endPoint: .trailing
                 )
+            )
+            .cornerRadius(DesignSystem.BorderRadius.medium)
+        }
+        .padding(.horizontal)
+    }
+    
+    /// List of active challenges
+    private var activeChallengesList: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.m) {
+            Text("Active Challenges")
+                .font(DesignSystem.Typography.headline)
+                .padding(.horizontal)
+            
+            if activeChallenges.isEmpty {
+                CTCard(style: .bordered) {
+                    Text("No active challenges.")
+                        .font(DesignSystem.Typography.body)
+                        .foregroundColor(DesignSystem.Colors.secondaryText)
+                        .padding()
+                        .frame(maxWidth: .infinity)
+                }
+                .padding(.horizontal)
+            } else {
+                ForEach(activeChallenges) { challenge in
+                    activeChallengeCard(challenge)
+                        .onTapGesture {
+                            showingAnalyticsChallenge = challenge
+                        }
+                        .padding(.horizontal)
+                }
+            }
+        }
+    }
+    
+    /// Card view for an active challenge
+    private func activeChallengeCard(_ challenge: Challenge) -> some View {
+        CTCard(style: .glass) {
+            HStack {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) {
+                    Text(challenge.name)
+                        .font(DesignSystem.Typography.subheadline)
+                        .fontWeight(.semibold)
+                    Text("Day \(challenge.currentDay) of \(challenge.durationInDays)")
+                        .font(DesignSystem.Typography.caption1)
+                        .foregroundColor(DesignSystem.Colors.secondaryText)
+                }
+                
+                Spacer()
+                
+                CTProgressRing(
+                    progress: challenge.progress,
+                    color: getColorForChallenge(challenge),
+                    lineWidth: 6,
+                    size: 50
+                )
+                
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(DesignSystem.Colors.secondaryText)
             }
             .padding()
         }
     }
     
-    // MARK: - Helper Methods
+    /// Reusable stat item view
+    private func statItem(value: String, label: String, icon: String, color: Color = DesignSystem.Colors.primaryAction) -> some View {
+        VStack(spacing: DesignSystem.Spacing.xxs) {
+            Image(systemName: icon)
+                .font(.system(size: 16))
+                .foregroundColor(color)
+            
+            Text(value)
+                .font(DesignSystem.Typography.title3)
+                .fontWeight(.bold)
+            
+            Text(label)
+                .font(DesignSystem.Typography.caption1)
+                .foregroundColor(DesignSystem.Colors.secondaryText)
+        }
+        .frame(maxWidth: .infinity)
+    }
     
-    /// Calculate the current streak
-    private func calculateCurrentStreak() -> Int {
+    // MARK: - Data Calculation Methods
+    
+    /// Calculate overall streak based on completing at least one task per day across all challenges.
+    private func calculateOverallStreak(dailyTasks: [DailyTask]) -> StreakData {
+        guard !dailyTasks.isEmpty else {
+            return StreakData(current: 0, best: 0, total: 0)
+        }
+        
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
-        
-        var currentDate = today
-        var streak = 0
-        
-        while true {
-            let tasksForDay = dailyTasks.filter { 
-                calendar.isDate($0.date, inSameDayAs: currentDate)
-            }
-            
-            if tasksForDay.isEmpty {
-                // No tasks for this day, break the streak
-                break
-            }
-            
-            let allCompleted = tasksForDay.allSatisfy { $0.status == .completed }
-            
-            if !allCompleted {
-                // Not all tasks completed, break the streak
-                break
-            }
-            
-            // Increment streak and move to previous day
-            streak += 1
-            guard let previousDay = calendar.date(byAdding: .day, value: -1, to: currentDate) else {
-                break
-            }
-            currentDate = previousDay
+
+        // Group tasks by date for efficient lookup
+        let tasksByDate = Dictionary(grouping: dailyTasks) { calendar.startOfDay(for: $0.date) }
+        let sortedDates = tasksByDate.keys.sorted()
+        guard let firstTaskDate = sortedDates.first, let lastTaskDate = sortedDates.last else {
+             return StreakData(current: 0, best: 0, total: 0)
         }
-        
-        return streak
-    }
-    
-    /// Calculate the longest streak
-    private func calculateLongestStreak() -> Int {
-        let calendar = Calendar.current
-        
-        // Sort tasks by date
-        let sortedTasks = dailyTasks.sorted { $0.date < $1.date }
-        
-        var longestStreak = 0
+
         var currentStreak = 0
-        var lastDate: Date?
-        
-        for task in sortedTasks {
-            let taskDate = calendar.startOfDay(for: task.date)
+        var bestStreak = 0
+        var internalCurrentStreak = 0
+        var totalCompletedDays = 0
+        var dateToCheck = firstTaskDate
+
+        // Calculate Best Streak and Total Completed Days by iterating forward
+        while dateToCheck <= lastTaskDate {
+            let tasksForDay = tasksByDate[dateToCheck] ?? []
+            if tasksForDay.contains(where: { $0.status == .completed }) {
+                internalCurrentStreak += 1
+                totalCompletedDays += 1
+            } else {
+                bestStreak = max(bestStreak, internalCurrentStreak)
+                internalCurrentStreak = 0
+            }
+            // Move to the next day
+            guard let nextDay = calendar.date(byAdding: .day, value: 1, to: dateToCheck) else { break }
+            dateToCheck = nextDay
             
-            // Group tasks by date
-            if let lastDate = lastDate, !calendar.isDate(taskDate, inSameDayAs: lastDate) {
-                // Check if all tasks for the previous day were completed
-                let tasksForPreviousDay = dailyTasks.filter { 
-                    calendar.isDate($0.date, inSameDayAs: lastDate)
-                }
-                
-                let allCompleted = tasksForPreviousDay.allSatisfy { $0.status == .completed }
-                
-                if allCompleted {
-                    currentStreak += 1
-                    longestStreak = max(longestStreak, currentStreak)
-                } else {
-                    currentStreak = 0
-                }
+            // Don't go beyond today when calculating streaks
+            if dateToCheck > today {
+                break
+            }
+        }
+        bestStreak = max(bestStreak, internalCurrentStreak) // Final check for best streak
+
+        // Calculate Current Streak by iterating backward from today
+        dateToCheck = today
+        currentStreak = 0 // Reset current streak before calculating
+        while true {
+            let tasksForDay = tasksByDate[dateToCheck] ?? []
+            if tasksForDay.contains(where: { $0.status == .completed }) {
+                currentStreak += 1
+            } else {
+                // If no tasks completed for this day, or no tasks exist, break streak
+                break
             }
             
-            lastDate = taskDate
+            guard let previousDay = calendar.date(byAdding: .day, value: -1, to: dateToCheck) else { break }
+            // Stop if we go before the first task date found
+            if previousDay < firstTaskDate { break }
+            dateToCheck = previousDay
         }
-        
-        return longestStreak
+
+        return StreakData(
+            current: currentStreak,
+            best: bestStreak,
+            total: totalCompletedDays
+        )
     }
     
-    // Helper methods for UI components
-    private func getCurrentStreak() -> Int {
-        return currentStreak
-    }
-    
-    private func getBestStreak() -> Int {
-        return longestStreak
-    }
-    
-    private func getTaskCompletionStats(for challenge: Challenge) -> (completed: Int, total: Int, completionRate: Double) {
-        let completedTasks = dailyTasks.filter { $0.challenge?.id == challenge.id && $0.status == .completed }.count
-        let totalTasks = dailyTasks.filter { $0.challenge?.id == challenge.id }.count
-        let completionRate = totalTasks > 0 ? Double(completedTasks) / Double(totalTasks) * 100 : 0
-        
-        return (completed: completedTasks, total: totalTasks, completionRate: completionRate)
-    }
-    
-    private func getMultiRingData() -> [CTMultiProgressRing.RingData] {
-        return challenges.filter { $0.status == .inProgress }.map { challenge in
-            CTMultiProgressRing.RingData(
-                progress: challenge.progress,
-                color: getColorForChallenge(challenge),
-                title: challenge.name
+    /// Calculate overall task completion data for the selected time frame.
+    private func calculateOverallTaskCompletion(dailyTasks: [DailyTask], timeFrame: TimeFrame) -> [TaskCompletionData] {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let startDate: Date
+
+        // Determine the start date based on the selected time frame
+        switch timeFrame {
+        case .week:
+            startDate = calendar.date(byAdding: .day, value: -6, to: today) ?? today
+        case .month:
+            startDate = calendar.date(byAdding: .day, value: -29, to: today) ?? today
+        case .all:
+            // Use the date of the earliest task or today if no tasks exist
+            if let earliestDate = dailyTasks.map({ $0.date }).min() {
+                startDate = calendar.startOfDay(for: earliestDate)
+            } else {
+                startDate = today
+            }
+        }
+        let safeStartDate = calendar.startOfDay(for: startDate)
+
+        // Generate all dates within the calculated range [startDate, today]
+        var dateRange: [Date] = []
+        var currentDate = safeStartDate
+        while currentDate <= today {
+            dateRange.append(currentDate)
+            guard let nextDate = calendar.date(byAdding: .day, value: 1, to: currentDate) else { break }
+            currentDate = nextDate
+        }
+
+        // Group tasks by date for efficient lookup within the relevant range
+        let tasksByDate = Dictionary(grouping: dailyTasks) { calendar.startOfDay(for: $0.date) }
+
+        // Create data points for each day in the generated date range
+        let completionData = dateRange.map { date -> TaskCompletionData in
+            let dayTasks = tasksByDate[date] ?? [] // Get tasks for the specific day
+            let total = dayTasks.count
+            let completed = dayTasks.filter { $0.status == .completed }.count
+            let completionRate = total > 0 ? (Double(completed) / Double(total)) * 100 : 0
+
+            return TaskCompletionData(
+                date: date,
+                total: total,
+                completed: completed,
+                missed: total - completed, // Calculate missed tasks for the day
+                completionRate: completionRate
             )
         }
+
+        return completionData
     }
     
+    /// Helper to get a color for a challenge type (replace potential missing `colorGradient`)
     private func getColorForChallenge(_ challenge: Challenge) -> Color {
+        // Use the existing logic or adapt as needed
         switch challenge.type {
         case .seventyFiveHard:
             return .blue
         case .waterFasting:
-            return Color(hex: "00C7BE") // Teal
+            return Color(hex: "00C7BE")
         case .thirtyOneModified:
             return .purple
         case .custom:
             return DesignSystem.Colors.primaryAction
+        // Add default or handle other cases if necessary
         }
     }
     
-    private func getChartData() -> [PTTaskCompletionData] {
-        return filteredTaskData
-    }
-    
-    private func getTrendData() -> [ProgressDataPoint] {
-        return filteredTaskData.map { data in
-            ProgressDataPoint(
-                date: data.date,
-                value: data.completionRate,
-                targetValue: 1.0,
-                category: "Completion Rate"
-            )
+    func rotateDevice() {
+        isLandscape.toggle()
+        
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+            let orientationMask: UIInterfaceOrientationMask = isLandscape ? .landscape : .portrait
+            windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: orientationMask)) { error in
+                Logger.error("Failed to rotate device: \(error.localizedDescription)", category: .app)
+            }
         }
     }
 }
 
-// MARK: - Supporting Types
+// MARK: - Detailed Stats View
 
-struct PTTaskCompletionData: Identifiable {
-    var id = UUID()
-    var date: Date
-    var completed: Int
-    var total: Int
+struct DetailedStatsView: View {
+    let taskCompletionData: [TaskCompletionData]
+    let streakData: StreakData
+    @Binding var timeFrame: ProgressTrackingView.TimeFrame
+    @Environment(\.dismiss) private var dismiss
     
-    var completionRate: Double {
-        total > 0 ? Double(completed) / Double(total) : 0
+    @State private var isLandscape: Bool = false
+    
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                DesignSystem.Colors.background.ignoresSafeArea()
+                
+                VStack(spacing: 16) {
+                    // Time frame selector
+                    Picker("Time Frame", selection: $timeFrame) {
+                        ForEach(ProgressTrackingView.TimeFrame.allCases) { timeFrame in
+                            Text(timeFrame.rawValue).tag(timeFrame)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal)
+                    
+                    if isLandscape {
+                        landscapeLayout
+                    } else {
+                        portraitLayout
+                    }
+                }
+                .padding(.vertical)
+                .navigationTitle("Detailed Statistics")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Done") {
+                            dismiss()
+                        }
+                    }
+                    
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button(action: {
+                            rotateDevice()
+                        }) {
+                            Image(systemName: isLandscape ? "rectangle.portrait.rotate" : "rectangle.landscape.rotate")
+                                .font(.system(size: 20))
+                                .foregroundColor(.accentColor)
+                        }
+                    }
+                }
+                .onAppear {
+                    // Check the current interface orientation when view appears
+                    updateOrientationState()
+                }
+                // Listen to windowScene size changes
+                .onChange(of: UIScreen.main.bounds.size) { oldValue, newValue in
+                    updateOrientationState()
+                }
+            }
+        }
     }
     
-    var missed: Int {
-        total - completed
+    private func updateOrientationState() {
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+            isLandscape = windowScene.interfaceOrientation.isLandscape
+        }
     }
     
-    var day: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "E"
-        return formatter.string(from: date)
+    private func rotateDevice() {
+        isLandscape.toggle()
+        
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+            let orientationMask: UIInterfaceOrientationMask = isLandscape ? .landscape : .portrait
+            windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: orientationMask)) { error in
+                Logger.error("Failed to rotate device: \(error.localizedDescription)", category: .app)
+            }
+        }
     }
-}
-
-struct PTProgressDataPoint: Identifiable {
-    var id = UUID()
-    var date: Date
-    var value: Double
-    var targetValue: Double
-    var category: String
-}
-
-struct PTProgressRingData {
-    var progress: Double
-    var color: Color
-    var thickness: CGFloat
+    
+    private var portraitLayout: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                streakInfoCard
+                
+                completionTrendChart
+                
+                taskCompletionByDayChart
+            }
+            .padding(.horizontal)
+        }
+    }
+    
+    private var landscapeLayout: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                HStack(alignment: .top, spacing: 16) {
+                    streakInfoCard
+                        .frame(width: 340)
+                    
+                    VStack(spacing: 24) {
+                        completionTrendChart
+                            .frame(height: 300)
+                            
+                        taskCompletionByDayChart
+                            .frame(height: 300)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            .padding(.horizontal)
+        }
+    }
+    
+    private var streakInfoCard: some View {
+        CTCard(style: .glass) {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Activity Streak")
+                    .font(DesignSystem.Typography.headline)
+                
+                VStack(alignment: .leading, spacing: 20) {
+                    HStack {
+                        VStack(alignment: .center, spacing: 4) {
+                            Text("Current Streak")
+                                .font(DesignSystem.Typography.caption1)
+                                .foregroundColor(DesignSystem.Colors.secondaryText)
+                            
+                            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                                Text("\(streakData.current)")
+                                    .font(.system(size: 40, weight: .bold))
+                                    .foregroundColor(DesignSystem.Colors.primaryText)
+                                
+                                Text(streakData.current == 1 ? "day" : "days")
+                                    .font(DesignSystem.Typography.caption1)
+                                    .foregroundColor(DesignSystem.Colors.secondaryText)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        
+                        Divider()
+                            .frame(height: 50)
+                        
+                        VStack(alignment: .center, spacing: 4) {
+                            Text("Best Streak")
+                                .font(DesignSystem.Typography.caption1)
+                                .foregroundColor(DesignSystem.Colors.secondaryText)
+                            
+                            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                                Text("\(streakData.best)")
+                                    .font(.system(size: 40, weight: .bold))
+                                    .foregroundColor(DesignSystem.Colors.primaryText)
+                                
+                                Text(streakData.best == 1 ? "day" : "days")
+                                    .font(DesignSystem.Typography.caption1)
+                                    .foregroundColor(DesignSystem.Colors.secondaryText)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    
+                    VStack(alignment: .center, spacing: 4) {
+                        Text("Perfect Days")
+                            .font(DesignSystem.Typography.caption1)
+                            .foregroundColor(DesignSystem.Colors.secondaryText)
+                        
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                            Text("\(streakData.total)")
+                                .font(.system(size: 32, weight: .bold))
+                                .foregroundColor(DesignSystem.Colors.primaryText)
+                            
+                            Text("total")
+                                .font(DesignSystem.Typography.caption1)
+                                .foregroundColor(DesignSystem.Colors.secondaryText)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                
+                Text("A perfect day is one where you completed at least one task. Your current streak shows consecutive perfect days up to today.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding()
+        }
+    }
+    
+    private var completionTrendChart: some View {
+        Chart {
+            ForEach(taskCompletionData, id: \.date) { day in
+                AreaMark(
+                    x: .value("Date", day.date),
+                    y: .value("Completion Rate", day.completionRate)
+                )
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [
+                            DesignSystem.Colors.primaryAction,
+                            DesignSystem.Colors.primaryAction.opacity(0.5)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .interpolationMethod(.catmullRom)
+                
+                LineMark(
+                    x: .value("Date", day.date),
+                    y: .value("Completion Rate", day.completionRate)
+                )
+                .foregroundStyle(DesignSystem.Colors.primaryAction)
+                .lineStyle(StrokeStyle(lineWidth: 3))
+                .interpolationMethod(.catmullRom)
+                
+                PointMark(
+                    x: .value("Date", day.date),
+                    y: .value("Completion Rate", day.completionRate)
+                )
+                .foregroundStyle(Color.white)
+                .symbolSize(day.completionRate > 0 ? 50 : 0)
+            }
+        }
+        .chartYScale(domain: 0...100)
+        .chartYAxis {
+            AxisMarks(position: .leading)
+        }
+        .chartXAxis {
+            AxisMarks(values: .stride(by: timeFrame == .week ? 1 : 7)) { date in
+                AxisValueLabel(format: .dateTime.month().day())
+            }
+        }
+        .chartLegend(.hidden)
+        .frame(height: 250)
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.BorderRadius.medium)
+                .fill(DesignSystem.Colors.cardBackground)
+        )
+        .overlay(
+            VStack(alignment: .leading) {
+                Text("Completion Rate")
+                    .font(DesignSystem.Typography.headline)
+                    .foregroundColor(DesignSystem.Colors.primaryText)
+                
+                Text("Percentage of completed tasks by day")
+                    .font(DesignSystem.Typography.caption1)
+                    .foregroundColor(DesignSystem.Colors.secondaryText)
+            }
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+        )
+        .padding(.bottom, 40)
+    }
+    
+    private var taskCompletionByDayChart: some View {
+        Chart {
+            ForEach(taskCompletionData, id: \.date) { day in
+                if day.total > 0 {
+                    BarMark(
+                        x: .value("Date", day.date),
+                        y: .value("Tasks", day.completed)
+                    )
+                    .foregroundStyle(DesignSystem.Colors.neonGreen)
+                    
+                    BarMark(
+                        x: .value("Date", day.date),
+                        y: .value("Tasks", day.missed)
+                    )
+                    .foregroundStyle(DesignSystem.Colors.neonOrange)
+                    .position(by: .value("Type", "Missed"))
+                }
+            }
+        }
+        .chartForegroundStyleScale(range: [DesignSystem.Colors.neonGreen, DesignSystem.Colors.neonOrange])
+        .chartLegend(position: .top)
+        .chartXAxis {
+            AxisMarks(values: .stride(by: timeFrame == .week ? 1 : 7)) { date in
+                AxisValueLabel(format: .dateTime.month().day())
+            }
+        }
+        .frame(height: 250)
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.BorderRadius.medium)
+                .fill(DesignSystem.Colors.cardBackground)
+        )
+        .overlay(
+            VStack(alignment: .leading) {
+                Text("Task Completion")
+                    .font(DesignSystem.Typography.headline)
+                    .foregroundColor(DesignSystem.Colors.primaryText)
+                
+                Text("Tasks completed vs. missed by day")
+                    .font(DesignSystem.Typography.caption1)
+                    .foregroundColor(DesignSystem.Colors.secondaryText)
+            }
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+        )
+        .padding(.bottom, 40)
+    }
 }
 
 // MARK: - Preview
 
 #Preview {
-    ProgressTrackingView()
+    // Create a view with configured data for preview
+    let view = ProgressTrackingView()
         .modelContainer(for: [Challenge.self, Task.self, DailyTask.self], inMemory: true)
         .environmentObject(UserSettings())
+    
+    // Return the view
+    return view
 } 

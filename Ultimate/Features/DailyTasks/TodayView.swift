@@ -369,8 +369,10 @@ struct TodayView: View {
     }
     
     private var overallProgress: Double {
-        let completedTasks = sortedDailyTasks.filter { $0.status == .completed }.count
-        let totalTasks = sortedDailyTasks.count
+        // Don't count missed or failed tasks in the total
+        let validTasks = sortedDailyTasks.filter { $0.status != .missed && $0.status != .failed }
+        let completedTasks = validTasks.filter { $0.status == .completed }.count
+        let totalTasks = validTasks.count
         
         guard totalTasks > 0 else { return 0.0 }
         return Double(completedTasks) / Double(totalTasks)
@@ -524,7 +526,17 @@ struct TaskDetailView: View {
     @State private var actualValue: String = ""
     @State private var showingConfirmation = false
     @State private var showingSaveConfirmation = false
-    @State private var showingWaterTracker = false
+    
+    // Water tracking specific states
+    @State private var glassesConsumed: Int = 0
+    @State private var totalGlasses: Int = 8
+    @State private var glassSize: Double = 250 // ml
+    @State private var customGlassSize: String = ""
+    @State private var totalWaterInMl: Double = 0 // Track total water in ml directly
+    @State private var showingCustomizeView: Bool = false
+    
+    // MARK: - State
+    @State private var selectedStatus: TaskCompletionStatus?
     
     var body: some View {
         ScrollView {
@@ -532,9 +544,9 @@ struct TaskDetailView: View {
                 // Task header
                 taskHeaderSection
                 
-                // Water tracking button for water tasks
+                // Water tracking UI for water tasks
                 if let taskObj = task.task, taskObj.type == .water {
-                    waterTrackingSection
+                    waterTrackingIntegratedSection
                 }
                 
                 // Task details
@@ -582,7 +594,15 @@ struct TaskDetailView: View {
             // Initialize actual value if available
             if let value = task.actualValue {
                 actualValue = String(format: "%.1f", value)
+                
+                // For water tasks, initialize glasses consumed
+                if let taskObj = task.task, taskObj.type == .water {
+                    glassesConsumed = Int(value)
+                }
             }
+            
+            // Initialize water tracking data
+            initializeWaterTrackingData()
         }
         .alert(isPresented: $showingConfirmation) {
             Alert(
@@ -594,47 +614,271 @@ struct TaskDetailView: View {
                 secondaryButton: .cancel()
             )
         }
-        .sheet(isPresented: $showingWaterTracker) {
-            if let tasksManager = tasksManager {
-                WaterTrackingView(dailyTask: task, tasksManager: tasksManager)
-            }
+        .sheet(isPresented: $showingCustomizeView) {
+            waterCustomizeView
         }
     }
     
     // MARK: - View Components
     
-    // Water tracking section for water-type tasks
-    private var waterTrackingSection: some View {
+    // Water tracking section with integrated UI
+    private var waterTrackingIntegratedSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Water Tracking")
-                .font(DesignSystem.Typography.headline)
-                .foregroundColor(DesignSystem.Colors.primaryText)
-            
-            Button {
-                showingWaterTracker = true
-            } label: {
-                HStack {
-                    Image(systemName: "drop.fill")
-                        .font(.system(size: 24))
-                        .foregroundColor(.blue)
-                    
-                    Text("Track Glass by Glass")
-                        .font(DesignSystem.Typography.body)
-                        .foregroundColor(.white)
-                    
-                    Spacer()
-                    
-                    Image(systemName: "chevron.right")
-                        .foregroundColor(.white.opacity(0.7))
+            HStack {
+                Text("Water Tracking")
+                    .font(DesignSystem.Typography.headline)
+                    .foregroundColor(DesignSystem.Colors.primaryText)
+                
+                Spacer()
+                
+                Button {
+                    showingCustomizeView.toggle()
+                } label: {
+                    Image(systemName: "gear")
+                        .foregroundColor(DesignSystem.Colors.neonCyan)
                 }
-                .padding()
-                .background(Color.blue)
-                .cornerRadius(DesignSystem.BorderRadius.medium)
+            }
+            
+            // Progress Visualization
+            ZStack {
+                // Water container
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(Color.blue, lineWidth: 2)
+                    .frame(height: 150)
+                
+                // Water level
+                VStack {
+                    Spacer(minLength: 0)
+                    Rectangle()
+                        .fill(Color.blue.opacity(0.7))
+                        .frame(height: 150 * min(CGFloat(glassesConsumed) / CGFloat(totalGlasses), 1.0))
+                }
+                .frame(height: 150)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                
+                // Water drops animation when adding a glass
+                if glassesConsumed > 0 {
+                    WaterDropsAnimation()
+                        .frame(height: 150)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                }
+                
+                // Progress text
+                VStack(spacing: 8) {
+                    Text("\(glassesConsumed)/\(totalGlasses)")
+                        .font(.title3)
+                        .bold()
+                        .foregroundColor(.white)
+                        .shadow(radius: 2)
+                    
+                    if totalWaterInMl >= 1000 {
+                        // Show in liters if over 1000ml
+                        Text("\(String(format: "%.1f", Double(glassesConsumed) * glassSize / 1000))/\(String(format: "%.1f", totalWaterInMl / 1000)) L")
+                            .font(.subheadline)
+                            .foregroundColor(.white)
+                            .shadow(radius: 2)
+                    } else {
+                        Text("\(Int(Double(glassesConsumed) * glassSize))/\(Int(totalWaterInMl)) ml")
+                            .font(.subheadline)
+                            .foregroundColor(.white)
+                            .shadow(radius: 2)
+                    }
+                    
+                    Text("\(Int((Double(glassesConsumed) / Double(totalGlasses)) * 100))% Complete")
+                        .font(.caption)
+                        .foregroundColor(.white)
+                        .shadow(radius: 2)
+                }
+            }
+            .frame(height: 150)
+            
+            // Quick add buttons
+            Text("Add Water")
+                .font(.headline)
+                .foregroundColor(.primary)
+                .padding(.top, 8)
+            
+            // Common container buttons
+            HStack(spacing: 12) {
+                quickAddButton(name: "Glass", size: Int(glassSize), icon: "glass.and.bottle.fill")
+                quickAddButton(name: "Bottle", size: 500, icon: "waterbottle")
+                quickAddButton(name: "Big Bottle", size: 1000, icon: "waterbottle.fill")
+            }
+            
+            // Manual counter adjustment
+            HStack(spacing: 20) {
+                Button {
+                    if glassesConsumed > 0 {
+                        glassesConsumed -= 1
+                        updateActualValue()
+                    }
+                } label: {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.system(size: 32))
+                        .foregroundColor(.red)
+                }
+                
+                VStack {
+                    Text("\(glassesConsumed)")
+                        .font(.system(size: 32, weight: .bold))
+                    
+                    Text("glasses")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                .frame(width: 100)
+                
+                Button {
+                    glassesConsumed += 1
+                    updateActualValue()
+                    
+                    // Check if goal is completed
+                    if glassesConsumed >= totalGlasses && task.status != .completed {
+                        // Ask if they want to mark it complete
+                        selectedStatus = .completed
+                        showingConfirmation = true
+                    }
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 32))
+                        .foregroundColor(.green)
+                }
+            }
+            .padding(.vertical)
+            
+            // Auto-complete button
+            if glassesConsumed < totalGlasses {
+                Button {
+                    glassesConsumed = totalGlasses
+                    updateActualValue()
+                    
+                    // Ask if they want to mark it complete
+                    selectedStatus = .completed
+                    showingConfirmation = true
+                } label: {
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                        Text("Mark All Consumed")
+                    }
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.green)
+                    .cornerRadius(DesignSystem.BorderRadius.medium)
+                }
             }
         }
         .padding()
         .background(DesignSystem.Colors.cardBackground)
         .cornerRadius(DesignSystem.BorderRadius.medium)
+    }
+    
+    /// Create a quick add button for a specific container size
+    private func quickAddButton(name: String, size: Int, icon: String) -> some View {
+        Button {
+            // Calculate how many "glasses" this container represents
+            let glassesInContainer = ceil(Double(size) / glassSize)
+            glassesConsumed += Int(glassesInContainer)
+            updateActualValue()
+            
+            // Check if goal is completed
+            if glassesConsumed >= totalGlasses && task.status != .completed {
+                // Ask if they want to mark it complete
+                selectedStatus = .completed
+                showingConfirmation = true
+            }
+        } label: {
+            VStack {
+                Image(systemName: icon)
+                    .font(.system(size: 22))
+                Text(name)
+                    .font(.caption)
+                Text("\(size) ml")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(Color.blue.opacity(0.1))
+            .cornerRadius(10)
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color.blue.opacity(0.3), lineWidth: 1)
+            )
+        }
+        .foregroundColor(.primary)
+    }
+    
+    /// Customization view (shown in sheet)
+    private var waterCustomizeView: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("Glass Size")) {
+                    HStack {
+                        Text("\(Int(glassSize)) ml")
+                        Spacer()
+                        Button("Edit") {
+                            customGlassSize = String(Int(glassSize))
+                        }
+                    }
+                    
+                    TextField("Glass size in ml", text: $customGlassSize)
+                        .keyboardType(.numberPad)
+                        .onSubmit {
+                            if let size = Double(customGlassSize), size > 0 {
+                                glassSize = size
+                                updateTotalGlasses()
+                            }
+                        }
+                }
+                
+                Section(header: Text("Total Water Goal")) {
+                    if totalWaterInMl >= 1000 {
+                        Text("\(String(format: "%.1f", totalWaterInMl / 1000)) L")
+                    } else {
+                        Text("\(Int(totalWaterInMl)) ml")
+                    }
+                    
+                    Stepper("\(totalGlasses) glasses", value: $totalGlasses, in: 1...20)
+                        .onChange(of: totalGlasses) { oldValue, newValue in
+                            // Keep the total water amount the same
+                            glassSize = totalWaterInMl / Double(newValue)
+                        }
+                }
+                
+                Section(header: Text("Preset Container Sizes")) {
+                    Button("Standard Glass (250ml)") {
+                        glassSize = 250
+                        updateTotalGlasses()
+                    }
+                    
+                    Button("Large Glass (330ml)") {
+                        glassSize = 330
+                        updateTotalGlasses()
+                    }
+                    
+                    Button("Small Bottle (500ml)") {
+                        glassSize = 500
+                        updateTotalGlasses()
+                    }
+                    
+                    Button("Large Bottle (1000ml)") {
+                        glassSize = 1000
+                        updateTotalGlasses()
+                    }
+                }
+            }
+            .navigationTitle("Customize")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        showingCustomizeView = false
+                    }
+                }
+            }
+        }
     }
     
     private var taskHeaderSection: some View {
@@ -729,8 +973,8 @@ struct TaskDetailView: View {
             .background(DesignSystem.Colors.cardBackground)
             .cornerRadius(DesignSystem.BorderRadius.medium)
             
-            // Actual value field (if task has a target)
-            if let taskObj = task.task, taskObj.targetValue != nil {
+            // Actual value field (if task has a target and is not a water task)
+            if let taskObj = task.task, taskObj.targetValue != nil, taskObj.type != .water {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Actual Value")
                         .font(DesignSystem.Typography.subheadline)
@@ -820,11 +1064,75 @@ struct TaskDetailView: View {
         }
     }
     
-    // MARK: - State
-    
-    @State private var selectedStatus: TaskCompletionStatus?
-    
     // MARK: - Helper Methods
+    
+    /// Initialize water tracking data based on task properties
+    private func initializeWaterTrackingData() {
+        if let taskObj = task.task, taskObj.type == .water {
+            // Initialize with existing data if available
+            if let actualValue = task.actualValue {
+                glassesConsumed = Int(actualValue)
+            }
+            
+            // Set up total glasses based on challenge type and target value
+            if let targetValue = taskObj.targetValue {
+                // Check if this is a water-related task
+                if taskObj.type == .water {
+                    // For 75Hard, the target is 1 gallon (3.8L)
+                    if task.challenge?.type == .seventyFiveHard {
+                        totalGlasses = 8 // 1 gallon divided into 8 glasses
+                        glassSize = 3800 / 8 // ~475ml per glass
+                        totalWaterInMl = 3800
+                    } 
+                    // For 31Modified, the target is 2 liters
+                    else if task.challenge?.type == .thirtyOneModified {
+                        totalGlasses = 8 // 2L divided into 8 glasses
+                        glassSize = 2000 / 8 // 250ml per glass
+                        totalWaterInMl = 2000
+                    }
+                    // For water fasting, the target is 3 liters
+                    else if task.challenge?.type == .waterFasting {
+                        totalGlasses = 12 // 3L divided into 12 glasses
+                        glassSize = 3000 / 12 // 250ml per glass
+                        totalWaterInMl = 3000
+                    }
+                    // For custom challenges with a target value
+                    else if let targetUnit = taskObj.targetUnit {
+                        if targetUnit.lowercased().contains("liter") || targetUnit.lowercased().contains("l") {
+                            let liters = targetValue
+                            totalGlasses = 8 // Default to 8 glasses
+                            glassSize = (liters * 1000) / Double(8) // Convert to ml
+                            totalWaterInMl = liters * 1000
+                        } else if targetUnit.lowercased().contains("gallon") {
+                            let gallons = targetValue
+                            totalGlasses = 8 // Default to 8 glasses
+                            glassSize = (gallons * 3800) / Double(8) // Convert to ml
+                            totalWaterInMl = gallons * 3800
+                        } else if targetUnit.lowercased().contains("glass") {
+                            totalGlasses = Int(targetValue)
+                            glassSize = 250 // Default glass size
+                            totalWaterInMl = targetValue * 250
+                        } else {
+                            totalGlasses = Int(targetValue)
+                            totalWaterInMl = targetValue * 250 // Assume default
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    /// Updates total glasses based on glass size while maintaining total volume
+    private func updateTotalGlasses() {
+        guard glassSize > 0 else { return }
+        totalGlasses = max(1, Int(ceil(totalWaterInMl / glassSize)))
+    }
+    
+    /// Update the actual value based on glasses consumed
+    private func updateActualValue() {
+        actualValue = String(glassesConsumed)
+        saveNotes() // Save automatically when glasses are changed
+    }
     
     private func statusText(for task: DailyTask) -> String {
         switch task.status {
@@ -906,7 +1214,11 @@ struct TaskDetailView: View {
         guard let status = selectedStatus, let tasksManager = tasksManager else { return }
         
         // Convert actual value to Double if provided
-        let actualValueDouble = Double(actualValue)
+        let actualValueDouble: Double? = actualValue.isEmpty ? nil : Double(actualValue)
+        
+        // Log the status change
+        Logger.info("Updating task status: \(task.title) -> \(status.rawValue)", category: .tasks)
+        Logger.info("Actual value: \(actualValueDouble?.description ?? "nil")", category: .tasks)
         
         switch status {
         case .notStarted:
@@ -923,7 +1235,17 @@ struct TaskDetailView: View {
         
         // Update challenge progress
         if let challenge = task.challenge {
+            // Ensure the challenge progress is updated
+            Logger.info("Updating progress for challenge: \(challenge.name)", category: .tasks)
             tasksManager.updateChallengeProgress(for: challenge)
+        }
+        
+        // Force UI refresh by explicitly saving
+        do {
+            try tasksManager.modelContext.save()
+            Logger.info("Task status updated successfully", category: .tasks)
+        } catch {
+            Logger.error("Error saving task status: \(error)", category: .tasks)
         }
     }
     
@@ -956,5 +1278,36 @@ struct TaskDetailView: View {
         } catch {
             Logger.error("Error saving notes: \(error)", category: .tasks)
         }
+    }
+}
+
+// MARK: - Water Drops Animation
+
+struct WaterDropsAnimation: View {
+    @State private var isAnimating = false
+    
+    var body: some View {
+        ZStack {
+            ForEach(0..<10) { index in
+                Circle()
+                    .fill(Color.blue.opacity(0.3))
+                    .frame(width: 10, height: 10)
+                    .offset(x: isAnimating ? randomOffset() : 0, y: isAnimating ? randomOffset() : 0)
+                    .opacity(isAnimating ? 0 : 1)
+                    .animation(
+                        Animation.easeInOut(duration: Double.random(in: 1...2))
+                            .repeatForever(autoreverses: true)
+                            .delay(Double.random(in: 0...1)),
+                        value: isAnimating
+                    )
+            }
+        }
+        .onAppear {
+            isAnimating = true
+        }
+    }
+    
+    private func randomOffset() -> CGFloat {
+        CGFloat.random(in: -20...20)
     }
 } 

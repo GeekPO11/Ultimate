@@ -293,7 +293,7 @@ struct CTChallengeCard: View {
                     // Title and description
                     Text(title)
                         .font(DesignSystem.Typography.headline)
-                        .fontWeight(.bold)
+                        .fontWeight(.semibold)
                         .foregroundColor(DesignSystem.Colors.primaryText)
                     
                     Text(description)

@@ -250,7 +250,7 @@ struct PhotoDetailView: View {
             }
             .sheet(isPresented: $showingShareSheet) {
                 if let image = image {
-                    ShareSheet(items: [image])
+                    ShareSheet(activityItems: [image])
                 }
             }
             .overlay(

@@ -48,6 +48,8 @@ struct MaterialCard<Content: View>: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Regular Material")
                         .font(DesignSystem.Typography.headline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(DesignSystem.Colors.primaryText)
                     Text("This is a card with regular material")
                         .font(DesignSystem.Typography.subheadline)
                         .foregroundStyle(.secondary)
@@ -58,6 +60,8 @@ struct MaterialCard<Content: View>: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Ultra Thin Material")
                         .font(DesignSystem.Typography.headline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(DesignSystem.Colors.primaryText)
                     Text("This is a card with ultra thin material")
                         .font(DesignSystem.Typography.subheadline)
                         .foregroundStyle(.secondary)
@@ -68,6 +72,8 @@ struct MaterialCard<Content: View>: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Thick Material")
                         .font(DesignSystem.Typography.headline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(DesignSystem.Colors.primaryText)
                     Text("This is a card with thick material")
                         .font(DesignSystem.Typography.subheadline)
                         .foregroundStyle(.secondary)

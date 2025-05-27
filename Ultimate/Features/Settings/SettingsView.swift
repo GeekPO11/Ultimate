@@ -476,7 +476,7 @@ struct LogViewerView: View {
         }
         .sheet(isPresented: $showingShareSheet) {
             if let logFileURL = Logger.getLogFileURL() {
-                ShareSheet(items: [logFileURL])
+                ShareSheet(activityItems: [logFileURL])
             }
         }
         .alert("Clear Logs", isPresented: $showingClearAlert) {

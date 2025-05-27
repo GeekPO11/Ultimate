@@ -34,6 +34,7 @@ class DataMigrationService: ObservableObject {
             // Perform migration steps
             migratePhotos(modelContext: modelContext)
             migrateProgressPhotoAttributes(modelContext: modelContext)
+            migrateTaskScheduledTime(modelContext: modelContext)
             
             // Update the stored version
             userDefaults.set(currentAppVersion, forKey: lastVersionKey)
@@ -200,6 +201,53 @@ class DataMigrationService: ObservableObject {
             } catch {
                 Logger.error("Failed to save changes after migrating ProgressPhoto attributes: \(error.localizedDescription)", category: .database)
             }
+        }
+    }
+    
+    /// Migrates Task records to ensure scheduledTime property works correctly
+    private func migrateTaskScheduledTime(modelContext: ModelContext) {
+        Logger.info("Migrating Task scheduledTime property...", category: .database)
+        
+        // Get all tasks in the database
+        let descriptor = FetchDescriptor<Task>()
+        guard let existingTasks = try? modelContext.fetch(descriptor) else {
+            Logger.error("Failed to fetch existing tasks", category: .database)
+            return
+        }
+        
+        var updatedCount = 0
+        
+        // Due to how we've implemented the scheduledTime property with a private backing field,
+        // we need to ensure all Task objects are loaded and have their properties accessed
+        // to trigger SwiftData to properly update the schema
+        for task in existingTasks {
+            // Ensure timeOfDay has a valid value by accessing it and setting it explicitly
+            // This helps "materialize" the property for SwiftData
+            let currentTimeOfDay = task.timeOfDay
+            task.timeOfDay = currentTimeOfDay 
+            
+            // Access the scheduledTime property to ensure it's properly loaded
+            // For tasks that might have corrupt data, reset the property
+            let currentScheduledTime = task.scheduledTime
+            task.scheduledTime = currentScheduledTime
+            
+            // This forces any task with a problematic scheduledTime to be updated
+            modelContext.processPendingChanges()
+            updatedCount += 1
+        }
+        
+        if updatedCount > 0 {
+            Logger.info("Updated scheduledTime and timeOfDay for \(updatedCount) tasks", category: .database)
+            
+            // Save changes
+            do {
+                try modelContext.save()
+                Logger.info("Successfully migrated Task scheduledTime and timeOfDay properties", category: .database)
+            } catch {
+                Logger.error("Failed to save changes after migrating Task properties: \(error.localizedDescription)", category: .database)
+            }
+        } else {
+            Logger.info("No Task properties needed migration", category: .database)
         }
     }
 }

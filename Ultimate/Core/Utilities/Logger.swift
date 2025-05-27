@@ -1,6 +1,7 @@
 import Foundation
 import OSLog
 import SwiftUI
+import os.log
 
 /// A centralized logging system for the Ultimate app
 enum Logger {
@@ -16,12 +17,18 @@ enum Logger {
         case network = "Network"
         case database = "Database"
         case ui = "UI"
+        case healthKit = "HealthKit"
         case navigation = "Navigation"
         case userAction = "UserAction"
         case notification = "Notification"
         case authentication = "Authentication"
         case analytics = "Analytics"
         case performance = "Performance"
+        case tracking = "Tracking"
+        
+        var osLogCategory: String {
+            return rawValue
+        }
     }
     
     /// Log levels to indicate severity
@@ -104,7 +111,7 @@ enum Logger {
         let fileName = URL(fileURLWithPath: file).lastPathComponent
         let timestamp = dateFormatter.string(from: Date())
         
-        let logMessage = "\(level.emoji) [\(timestamp)] [\(category.rawValue)] [\(level.rawValue)] [\(fileName):\(line)] \(function) - \(message)"
+        let logMessage = "\(level.emoji) [\(timestamp)] [\(category.osLogCategory)] [\(level.rawValue)] [\(fileName):\(line)] \(function) - \(message)"
         
         // Print to console in debug mode
         #if DEBUG

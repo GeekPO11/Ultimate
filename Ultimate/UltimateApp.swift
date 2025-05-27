@@ -8,6 +8,9 @@
 import SwiftUI
 import SwiftData
 import UserNotifications
+import HealthKit
+import os.log
+import _Concurrency
 
 @main
 struct UltimateApp: App {
@@ -17,7 +20,9 @@ struct UltimateApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @State private var modelContainer: ModelContainer?
     @StateObject private var dataMigrationService = DataMigrationService.shared
+    @StateObject private var enhancedMigrationService = EnhancedDataMigrationService.shared
     @State private var hasRequestedNotificationPermission = false
+    @State private var hasRequestedHealthKitPermission = false
     
     // Define model types statically to avoid type inference
     private static let modelTypes: [any PersistentModel.Type] = [
@@ -57,15 +62,60 @@ struct UltimateApp: App {
                     .modelContainer(modelContainer!)
                     .environmentObject(userSettings)
                     .onAppear {
+                        // Request notifications permission
                         if !hasRequestedNotificationPermission {
                             NotificationManager.shared.requestAuthorization()
                             hasRequestedNotificationPermission = true
+                        }
+                        
+                        // Set up HealthKit integration
+                        if !hasRequestedHealthKitPermission {
+                            setupHealthKitIntegration()
+                        }
+                    }
+                    .onChange(of: scenePhase) { _, newPhase in
+                        if newPhase == .active {
+                            // Refresh health data when app becomes active
+                            DailyTaskManager.shared.checkAndUpdateWorkoutTasks()
                         }
                     }
                     .onChange(of: dataMigrationService.isMigrationComplete) { _, _ in
                         // Refresh data after migration if needed
                     }
             }
+        }
+    }
+    
+    // Setup HealthKit integration
+    private func setupHealthKitIntegration() {
+        // Set model context in DailyTaskManager
+        if let modelContext = modelContainer?.mainContext {
+            DailyTaskManager.shared.setModelContext(modelContext)
+            
+            // First check if HealthKit is available without requesting permissions
+            if !DailyTaskManager.shared.checkHealthKitStatus() {
+                Logger.info("HealthKit integration available but not authorized yet", category: .healthKit)
+            }
+            
+            // Request HealthKit authorization with retry logic
+            DailyTaskManager.shared.requestHealthKitAuthorization { success in
+                if success {
+                    Logger.info("HealthKit authorization successful", category: .healthKit)
+                    self.hasRequestedHealthKitPermission = true
+                    
+                    // Only start tracking if authorized
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        // Delay by 1 second to ensure everything is initialized
+                        DailyTaskManager.shared.startWorkoutTrackingTimer()
+                    }
+                } else {
+                    Logger.warning("HealthKit authorization denied or unavailable - app will continue without fitness tracking", category: .healthKit)
+                    // We still mark as requested even though permission was denied
+                    self.hasRequestedHealthKitPermission = true
+                }
+            }
+        } else {
+            Logger.error("Model context not available for HealthKit integration", category: .database)
         }
     }
     
@@ -93,8 +143,14 @@ struct UltimateApp: App {
                 
                 // Set up migration handler for the container's context
                 let context = container.mainContext
-                // Perform migration checks
-                dataMigrationService.checkAndPerformMigration(modelContext: context)
+                
+                // Perform explicit stabilization of all models, especially Task
+                try populateTimeOfDayValues(context: context)
+                
+                // Then perform migration checks
+                _Concurrency.Task {
+                    await enhancedMigrationService.performMigration(modelContext: context)
+                }
                 
                 // Set the container
                 self.modelContainer = container
@@ -108,63 +164,51 @@ struct UltimateApp: App {
             Logger.error("Failed to create model container: \(error.localizedDescription)", category: .database)
             
             // Try to delete the store and create a new one
+            Logger.warning("Attempting to delete and recreate the persistent store", category: .database)
+            
             do {
-                Logger.warning("Attempting to delete and recreate the persistent store", category: .database)
                 // Try to delete the persistent store files manually
                 try deletePersistentStore()
+            } catch {
+                Logger.warning("Failed to delete persistent store: \(error.localizedDescription)", category: .database)
+            }
+            
+            // Create a basic container after attempting to delete the store
+            let schema = Schema([
+                Challenge.self,
+                Task.self,
+                DailyTask.self,
+                ProgressPhoto.self,
+                User.self
+            ])
+            
+            // Try with a simpler configuration
+            let modelConfiguration = ModelConfiguration(
+                schema: schema,
+                isStoredInMemoryOnly: false,
+                allowsSave: true
+            )
+            
+            do {
+                self.modelContainer = try ModelContainer(for: schema, configurations: [modelConfiguration])
+                Logger.info("Created new model container after deleting store", category: .database)
                 
-                // Create a basic container after deleting the store
-                let schema = Schema([
-                    Challenge.self,
-                    Task.self,
-                    DailyTask.self,
-                    ProgressPhoto.self,
-                    User.self
-                ])
-                
-                // Try with a simpler configuration
-                let modelConfiguration = ModelConfiguration(
-                    schema: schema,
-                    isStoredInMemoryOnly: false,
-                    allowsSave: true
-                )
-                
-                do {
-                    self.modelContainer = try ModelContainer(for: schema, configurations: [modelConfiguration])
-                    Logger.info("Created new model container after deleting store", category: .database)
-                    
-                    // After successful creation, perform migration
-                    if let container = self.modelContainer {
-                        dataMigrationService.checkAndPerformMigration(modelContext: container.mainContext)
-                    }
-                } catch {
-                    Logger.error("Failed to create model container even after deleting store: \(error.localizedDescription)", category: .database)
-                    
-                    // Last resort: try in-memory only
+                // After successful creation, perform migration
+                if let container = self.modelContainer {
                     do {
-                        let inMemoryConfig = ModelConfiguration(
-                            schema: schema,
-                            isStoredInMemoryOnly: true,
-                            allowsSave: true
-                        )
-                        self.modelContainer = try ModelContainer(for: schema, configurations: [inMemoryConfig])
-                        Logger.warning("Created in-memory model container as last resort", category: .database)
+                        try populateTimeOfDayValues(context: container.mainContext)
                     } catch {
-                        Logger.error("All attempts to create model container failed: \(error.localizedDescription)", category: .database)
+                        Logger.warning("Failed to populate timeOfDay values: \(error.localizedDescription)", category: .database)
+                    }
+                    _Concurrency.Task {
+                        await enhancedMigrationService.performMigration(modelContext: container.mainContext)
                     }
                 }
             } catch {
-                Logger.error("Failed to recover from model container creation error: \(error.localizedDescription)", category: .database)
+                Logger.error("Failed to create model container even after deleting store: \(error.localizedDescription)", category: .database)
                 
                 // Last resort: try in-memory only
                 do {
-                    let schema = Schema([
-                        Challenge.self,
-                        Task.self,
-                        DailyTask.self,
-                        ProgressPhoto.self,
-                        User.self
-                    ])
                     let inMemoryConfig = ModelConfiguration(
                         schema: schema,
                         isStoredInMemoryOnly: true,
@@ -176,6 +220,47 @@ struct UltimateApp: App {
                     Logger.error("All attempts to create model container failed: \(error.localizedDescription)", category: .database)
                 }
             }
+        }
+    }
+    
+    // Helper method to ensure all Task instances have valid timeOfDay values
+    private func populateTimeOfDayValues(context: ModelContext) throws {
+        Logger.info("Ensuring all Task instances have valid timeOfDay values", category: .database)
+        
+        // Fetch all Tasks that might not have proper timeOfDay values
+        let descriptor = FetchDescriptor<Task>()
+        let tasks = try context.fetch(descriptor)
+        
+        var updatedCount = 0
+        
+        // Process each task and check if timeOfDay needs initialization
+        for task in tasks {
+            // Check if timeOfDay is properly set, if not, set it to a default value
+            // This is a safer approach than force-accessing the property
+            if task.scheduledTime == nil && task.type == .workout {
+                // For workout tasks without a scheduled time, default to anytime
+                task.timeOfDay = .anytime
+                updatedCount += 1
+            } else if task.timeOfDay == .anytime && task.scheduledTime != nil {
+                // For tasks with scheduled times, set appropriate timeOfDay
+                let calendar = Calendar.current
+                let hour = calendar.component(.hour, from: task.scheduledTime!)
+                
+                if hour < 12 {
+                    task.timeOfDay = .morning
+                } else {
+                    task.timeOfDay = .evening
+                }
+                updatedCount += 1
+            }
+        }
+        
+        // Save changes if any tasks were updated
+        if updatedCount > 0 {
+            Logger.info("Updated timeOfDay for \(updatedCount) tasks", category: .database)
+            try context.save()
+        } else {
+            Logger.info("All tasks already have proper timeOfDay values", category: .database)
         }
     }
     

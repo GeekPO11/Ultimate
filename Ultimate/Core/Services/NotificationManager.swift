@@ -260,7 +260,7 @@ class NotificationManager: ObservableObject {
         
         // Fasting milestone reminders
         let milestones = [12, 16, 20, 24, 36, 48, 60, 72]
-        for (index, hours) in milestones.enumerated() {
+        for (_, hours) in milestones.enumerated() {
             // Calculate when this milestone will be hit based on challenge start date
             if let startDate = challenge.startDate {
                 let milestoneDate = Calendar.current.date(byAdding: .hour, value: hours, to: startDate)
@@ -802,6 +802,47 @@ class NotificationManager: ObservableObject {
         UNUserNotificationCenter.current().add(request) { error in
             if let error = error {
                 print("Error scheduling test notification: \(error)")
+            }
+        }
+    }
+    
+    /// Schedule a notification for automatic workout completion
+    func scheduleWorkoutCompletionNotification(taskTitle: String, timeOfDay: TimeOfDay) {
+        guard isAuthorized else {
+            Logger.warning("Cannot schedule workout completion notification because authorization is not granted", category: .notification)
+            return
+        }
+        
+        let content = UNMutableNotificationContent()
+        content.title = "Workout Completed! 💪"
+        content.body = "\(taskTitle) was automatically marked as complete based on your Apple Fitness data."
+        content.sound = .default
+        content.badge = 1
+        
+        // Add category and user info
+        content.categoryIdentifier = "WORKOUT_COMPLETION"
+        content.userInfo = [
+            "type": "workoutCompletion",
+            "taskTitle": taskTitle,
+            "timeOfDay": timeOfDay.rawValue
+        ]
+        
+        // Create a time-based trigger (deliver immediately)
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        
+        // Create the notification request
+        let request = UNNotificationRequest(
+            identifier: "workout-completion-\(UUID().uuidString)",
+            content: content,
+            trigger: trigger
+        )
+        
+        // Schedule the notification
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                Logger.error("Failed to schedule workout completion notification: \(error.localizedDescription)", category: .notification)
+            } else {
+                Logger.info("Scheduled workout completion notification for \(taskTitle)", category: .notification)
             }
         }
     }
