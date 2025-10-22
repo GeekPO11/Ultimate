@@ -1,0 +1,44 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "Ultimate: Premium Fitness & Habit Tracking App"
+version: 1.0.0
+date-released: 2025-01-22
+doi: 10.6084/m9.figshare.30418693
+url: "https://github.com/sanchaygumber/Ultimate"
+repository-code: "https://github.com/sanchaygumber/Ultimate"
+license: Apache-2.0
+authors:
+  - family-names: "Gumber"
+    given-names: "Sanchay"
+    email: ""
+    orcid: ""
+abstract: >
+  Ultimate is a comprehensive iOS fitness and habit tracking application
+  built with SwiftUI and SwiftData. It provides structured challenge management,
+  daily task tracking with multiple measurement types, progress analytics with
+  visual charts, progress photo tracking with comparison tools, and an intelligent
+  notification system. The app features a modern visionOS-inspired glass morphism
+  design and follows MVVM architecture with clean separation of concerns.
+keywords:
+  - iOS
+  - SwiftUI
+  - SwiftData
+  - fitness tracking
+  - habit tracking
+  - 75 Hard
+  - challenge management
+  - progress analytics
+  - health app
+  - MVVM architecture
+  - HealthKit integration
+preferred-citation:
+  type: software
+  title: "Ultimate: Premium Fitness & Habit Tracking App"
+  authors:
+    - family-names: "Gumber"
+      given-names: "Sanchay"
+  year: 2025
+  url: "https://github.com/sanchaygumber/Ultimate"
+  license: Apache-2.0
+

@@ -1,0 +1,76 @@
+Ultimate: Premium Fitness & Habit Tracking App
+Copyright 2025 Sanchay Gumber
+
+This product includes software developed by Sanchay Gumber.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+================================================================================
+
+ATTRIBUTION NOTICE
+================================================================================
+
+This software was created by Sanchay Gumber as a comprehensive fitness and 
+habit tracking solution. When using, modifying, or distributing this software,
+please retain proper attribution to the original author.
+
+Preferred citation format:
+  Ultimate by Sanchay Gumber
+  https://github.com/sanchaygumber/Ultimate
+
+================================================================================
+
+THIRD-PARTY DEPENDENCIES
+================================================================================
+
+This project relies on the following Apple frameworks and technologies:
+
+- SwiftUI: Copyright © Apple Inc. All rights reserved.
+- SwiftData: Copyright © Apple Inc. All rights reserved.
+- HealthKit: Copyright © Apple Inc. All rights reserved.
+- UserNotifications: Copyright © Apple Inc. All rights reserved.
+- PhotoKit: Copyright © Apple Inc. All rights reserved.
+
+These frameworks are used in accordance with Apple's standard iOS SDK license
+agreement and are subject to Apple's terms of service.
+
+================================================================================
+
+DESIGN INSPIRATION
+================================================================================
+
+The user interface design is inspired by Apple's visionOS design language and
+principles. The implementation is original work by Sanchay Gumber.
+
+The 75 Hard Challenge concept is attributed to Andy Frisella. This app is an
+independent implementation and is not officially affiliated with or endorsed
+by Andy Frisella or the official 75 Hard program.
+
+================================================================================
+
+ACKNOWLEDGMENTS
+================================================================================
+
+Special thanks to:
+- The Swift and iOS developer community for resources and best practices
+- Users who have provided feedback and feature suggestions
+- Contributors to this open-source project
+
+================================================================================
+
+For questions about attribution, licensing, or usage, please contact:
+- GitHub: https://github.com/sanchaygumber/Ultimate
+- Open an issue: https://github.com/sanchaygumber/Ultimate/issues
+
+Last Updated: January 2025
+
